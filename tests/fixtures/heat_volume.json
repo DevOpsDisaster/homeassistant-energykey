@@ -1,0 +1,24 @@
+{
+  "keyfigure": {
+    "prescaleUnit": {
+      "id": "cubic_meter",
+      "unit": "m3"
+    }
+  },
+  "series": [
+    {
+      "key": "usageConsumption.actual",
+      "name": "Synthetic heat volume",
+      "serieData": {
+        "datapoints": [
+          {
+            "start": "2026-07-29T00:00:00Z",
+            "end": "2026-07-30T00:00:00Z",
+            "value": 2.7,
+            "complete": true
+          }
+        ]
+      }
+    }
+  ]
+}

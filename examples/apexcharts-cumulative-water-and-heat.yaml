@@ -1,0 +1,114 @@
+# Replace the four REPLACE_* entity IDs with the EnergyKey entities from
+# Settings > Devices & services > EnergyKey before adding this card.
+type: vertical-stack
+cards:
+  - type: custom:apexcharts-card
+    graph_span: 400d
+    update_interval: 1h
+    span:
+      end: day
+    header:
+      show: true
+      title: Water consumption - cumulative
+      show_states: true
+      colorize_states: true
+    yaxis:
+      - min: 0
+        decimals: 2
+    apex_config:
+      chart:
+        height: 350px
+      legend:
+        show: true
+      tooltip:
+        shared: true
+        intersect: false
+      stroke:
+        lineCap: round
+      grid:
+        strokeDashArray: 3
+    series:
+      - entity: sensor.REPLACE_WATER_LATEST_DAILY_CONSUMPTION
+        name: Actual
+        type: area
+        color: "#F59E0B"
+        opacity: 0.35
+        stroke_width: 3
+        curve: straight
+        extend_to: false
+        float_precision: 2
+        data_generator: &cumulative_generator |
+          const points = (entity.attributes.data ?? [])
+            .filter((point) => point.complete)
+            .filter((point) => {
+              const timestamp = new Date(point.end).getTime();
+              return timestamp >= start.getTime() && timestamp <= end.getTime();
+            })
+            .sort((left, right) =>
+              new Date(left.end).getTime() - new Date(right.end).getTime()
+            );
+          if (points.length === 0) return [];
+          let total = 0;
+          const values = [[new Date(points[0].start).getTime(), 0]];
+          for (const point of points) {
+            total += Number(point.value);
+            values.push([new Date(point.end).getTime(), total]);
+          }
+          return values;
+      - entity: sensor.REPLACE_WATER_EXPECTED_DAILY_CONSUMPTION
+        name: Expected
+        type: area
+        color: "#3B82F6"
+        opacity: 0.20
+        stroke_width: 3
+        curve: straight
+        extend_to: false
+        float_precision: 2
+        data_generator: *cumulative_generator
+
+  - type: custom:apexcharts-card
+    graph_span: 400d
+    update_interval: 1h
+    span:
+      end: day
+    header:
+      show: true
+      title: District heating consumption - cumulative
+      show_states: true
+      colorize_states: true
+    yaxis:
+      - min: 0
+        decimals: 2
+    apex_config:
+      chart:
+        height: 350px
+      legend:
+        show: true
+      tooltip:
+        shared: true
+        intersect: false
+      stroke:
+        lineCap: round
+      grid:
+        strokeDashArray: 3
+    series:
+      - entity: sensor.REPLACE_HEAT_LATEST_DAILY_CONSUMPTION
+        name: Actual
+        type: area
+        color: "#F59E0B"
+        opacity: 0.35
+        stroke_width: 3
+        curve: straight
+        extend_to: false
+        float_precision: 2
+        data_generator: *cumulative_generator
+      - entity: sensor.REPLACE_HEAT_EXPECTED_DAILY_CONSUMPTION
+        name: Expected
+        type: area
+        color: "#3B82F6"
+        opacity: 0.20
+        stroke_width: 3
+        curve: straight
+        extend_to: false
+        float_precision: 2
+        data_generator: *cumulative_generator

@@ -10,7 +10,7 @@ services:
     working_dir: /workspace
     volumes:
       - type: bind
-        source: ..
+        source: ${HOST_PROJECT_DIR:-..}
         target: /workspace
     environment:
       HA_URL: http://homeassistant:8123
@@ -23,13 +23,19 @@ services:
   homeassistant:
     image: ghcr.io/home-assistant/home-assistant:${HOME_ASSISTANT_TAG:-stable}
     restart: unless-stopped
+    # dns:
+    #   - 1.1.1.1
+    #   - 8.8.8.8
+    # dns_opt:
+    #   - no-aaaa
+    #   - use-vc
     environment:
       TZ: ${TZ:-Europe/Copenhagen}
     ports:
       - "${HOME_ASSISTANT_PORT:-8123}:8123"
     volumes:
-      - ../.homeassistant:/config
-      - ../custom_components/energykey:/config/custom_components/energykey:ro
+      - ${HOST_PROJECT_DIR:-..}/.homeassistant:/config
+      - ${HOST_PROJECT_DIR:-..}/custom_components/energykey:/config/custom_components/energykey:ro
     networks:
       - development
 

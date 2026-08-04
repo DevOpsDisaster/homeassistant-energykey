@@ -1,0 +1,32 @@
+{
+  "groups": [
+    {
+      "id": "synthetic-group",
+      "items": [
+        {
+          "id": "synthetic-water-meter",
+          "itemCategory": "EnergyKeyMeter",
+          "itemType": "water",
+          "active": true,
+          "customName": "Garden meter",
+          "label": "12345678"
+        },
+        {
+          "id": "synthetic-heat-meter",
+          "itemCategory": "EnergyKeyMeter",
+          "itemType": "district_heating",
+          "active": true,
+          "customName": null,
+          "label": "87654321"
+        },
+        {
+          "id": "synthetic-inactive-water-meter",
+          "itemCategory": "EnergyKeyMeter",
+          "itemType": "water",
+          "active": false,
+          "label": "11111111"
+        }
+      ]
+    }
+  ]
+}

@@ -1,5 +1,6 @@
 {
   "name": "EnergyKey",
   "content_in_root": false,
-  "render_readme": true
+  "country": ["DK"],
+  "homeassistant": "2026.7.0"
 }

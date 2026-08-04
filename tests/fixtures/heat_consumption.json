@@ -1,0 +1,40 @@
+{
+  "keyfigure": {
+    "prescaleUnit": {
+      "id": "kWh",
+      "unit": "kWh"
+    }
+  },
+  "series": [
+    {
+      "key": "usageConsumption.actual",
+      "name": "Synthetic actual consumption",
+      "serieData": {
+        "datapoints": [
+          {
+            "start": "2026-07-29T00:00:00Z",
+            "end": "2026-07-30T00:00:00Z",
+            "value": 8.4,
+            "complete": true,
+            "counterValue": 2500.4,
+            "counterValueDate": "2026-07-30T00:00:00Z"
+          }
+        ]
+      }
+    },
+    {
+      "key": "usageBudget.expected",
+      "name": "Synthetic expected consumption",
+      "serieData": {
+        "datapoints": [
+          {
+            "start": "2026-07-29T00:00:00Z",
+            "end": "2026-07-30T00:00:00Z",
+            "value": 7.9,
+            "complete": true
+          }
+        ]
+      }
+    }
+  ]
+}

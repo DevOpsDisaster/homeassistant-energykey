@@ -1,0 +1,145 @@
+# Replace the six REPLACE_* entity IDs with the EnergyKey entities from
+# Settings > Devices & services > EnergyKey before adding this card.
+type: vertical-stack
+cards:
+  - type: custom:apexcharts-card
+    graph_span: 31d
+    update_interval: 1h
+    header:
+      show: true
+      title: Water - daily consumption
+      show_states: true
+      colorize_states: true
+    yaxis:
+      - min: 0
+        decimals: 2
+    apex_config:
+      chart:
+        height: 320px
+      legend:
+        show: true
+      tooltip:
+        shared: true
+        intersect: false
+      plotOptions:
+        bar:
+          columnWidth: 65%
+    series:
+      - entity: sensor.REPLACE_WATER_LATEST_DAILY_CONSUMPTION
+        name: Actual
+        type: column
+        color: "#039BE5"
+        float_precision: 2
+        data_generator: |
+          const points = entity.attributes.data ?? [];
+          return points
+            .filter((point) => point.complete)
+            .map((point) => [new Date(point.start).getTime(), Number(point.value)]);
+      - entity: sensor.REPLACE_WATER_EXPECTED_DAILY_CONSUMPTION
+        name: Expected
+        type: line
+        color: "#90CAF9"
+        curve: straight
+        stroke_width: 3
+        stroke_dash: 6
+        extend_to: false
+        float_precision: 2
+        data_generator: |
+          const points = entity.attributes.data ?? [];
+          return points
+            .filter((point) => point.complete)
+            .map((point) => [new Date(point.start).getTime(), Number(point.value)]);
+
+  - type: custom:apexcharts-card
+    graph_span: 31d
+    update_interval: 1h
+    header:
+      show: true
+      title: District heating - daily consumption
+      show_states: true
+      colorize_states: true
+    yaxis:
+      - min: 0
+        decimals: 2
+    apex_config:
+      chart:
+        height: 320px
+      legend:
+        show: true
+      tooltip:
+        shared: true
+        intersect: false
+      plotOptions:
+        bar:
+          columnWidth: 65%
+    series:
+      - entity: sensor.REPLACE_HEAT_LATEST_DAILY_CONSUMPTION
+        name: Actual
+        type: column
+        color: "#E53935"
+        float_precision: 2
+        data_generator: |
+          const points = entity.attributes.data ?? [];
+          return points
+            .filter((point) => point.complete)
+            .map((point) => [new Date(point.start).getTime(), Number(point.value)]);
+      - entity: sensor.REPLACE_HEAT_EXPECTED_DAILY_CONSUMPTION
+        name: Expected
+        type: line
+        color: "#FFAB91"
+        curve: straight
+        stroke_width: 3
+        stroke_dash: 6
+        extend_to: false
+        float_precision: 2
+        data_generator: |
+          const points = entity.attributes.data ?? [];
+          return points
+            .filter((point) => point.complete)
+            .map((point) => [new Date(point.start).getTime(), Number(point.value)]);
+
+  - type: custom:apexcharts-card
+    graph_span: 31d
+    update_interval: 1h
+    header:
+      show: true
+      title: District heating - flow and return temperatures
+      show_states: true
+      colorize_states: true
+    yaxis:
+      - decimals: 1
+    apex_config:
+      chart:
+        height: 320px
+      legend:
+        show: true
+      tooltip:
+        shared: true
+        intersect: false
+    series:
+      - entity: sensor.REPLACE_HEAT_LATEST_FLOW_TEMPERATURE
+        name: Flow
+        type: line
+        color: "#EF6C00"
+        curve: smooth
+        stroke_width: 3
+        extend_to: false
+        float_precision: 1
+        data_generator: |
+          const points = entity.attributes.data ?? [];
+          return points
+            .filter((point) => point.complete)
+            .map((point) => [new Date(point.start).getTime(), Number(point.value)]);
+      - entity: sensor.REPLACE_HEAT_LATEST_RETURN_TEMPERATURE
+        name: Return
+        type: line
+        color: "#1565C0"
+        curve: smooth
+        stroke_width: 3
+        extend_to: false
+        float_precision: 1
+        data_generator: |
+          const points = entity.attributes.data ?? [];
+          return points
+            .filter((point) => point.complete)
+            .map((point) => [new Date(point.start).getTime(), Number(point.value)]);

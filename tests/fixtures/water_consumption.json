@@ -1,0 +1,66 @@
+{
+  "keyfigure": {
+    "prescaleUnit": {
+      "id": "cubic_meter",
+      "unit": "m3"
+    }
+  },
+  "series": [
+    {
+      "key": "usageConsumption.actual",
+      "name": "Synthetic actual consumption",
+      "serieData": {
+        "datapoints": [
+          {
+            "start": 1785283200000,
+            "end": 1785369600000,
+            "value": "0.31",
+            "complete": true,
+            "counterValue": "100.31",
+            "counterValueDate": 1785369600000
+          },
+          {
+            "start": 1785369600000,
+            "end": 1785456000000,
+            "value": "0.28",
+            "complete": "true",
+            "counterValue": "100.59",
+            "counterValueDate": 1785456000000
+          },
+          {
+            "start": 1785456000000,
+            "end": 1785542400000,
+            "value": "0.11",
+            "complete": "false"
+          }
+        ]
+      }
+    },
+    {
+      "key": "usageBudget.expected",
+      "name": "Synthetic expected consumption",
+      "serieData": {
+        "datapoints": [
+          {
+            "start": 1785283200000,
+            "end": 1785369600000,
+            "value": "0.25",
+            "complete": true
+          },
+          {
+            "start": 1785369600000,
+            "end": 1785456000000,
+            "value": "0.25",
+            "complete": true
+          },
+          {
+            "start": 1785456000000,
+            "end": 1785542400000,
+            "value": "0.25",
+            "complete": false
+          }
+        ]
+      }
+    }
+  ]
+}
