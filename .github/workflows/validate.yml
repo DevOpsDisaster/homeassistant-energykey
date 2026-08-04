@@ -76,6 +76,10 @@ jobs:
         with:
           category: integration
           comment: "false"
+          # These repository-metadata checks are required for HACS default-store
+          # submission, which is intentionally deferred. Remove both ignores
+          # before opening a future PR against hacs/default.
+          ignore: topics description
 
   secrets:
     name: Secret scan

@@ -64,6 +64,12 @@ Do not create a PR against `hacs/default`. Inclusion in HACS' default catalog
 is a separate, deliberate future decision. It requires an explicit manual PR
 owned by a maintainer and is not part of any workflow in this repository.
 
+While that submission is deferred, the HACS validation workflow ignores only
+the `topics` and `description` default-catalog metadata checks. Before a future
+`hacs/default` PR, configure the metadata, remove both ignores from the
+validation and release workflows, and require a completely clean HACS Action
+run with no ignored checks.
+
 ## Release checklist
 
 - [ ] Manifest, tag, changelog, and documentation use the same version.

@@ -70,6 +70,8 @@ jobs:
         with:
           category: integration
           comment: "false"
+          # Default-store repository metadata is intentionally deferred.
+          ignore: topics description
       - name: Scan tagged history for secrets
         uses: gitleaks/gitleaks-action@dcedce43c6f43de0b836d1fe38946645c9c638dc # v2
         env:
