@@ -1,0 +1,37 @@
+name: ${COMPOSE_PROJECT_NAME:-homeassistant-energykey}
+
+services:
+  dev:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+    command: sleep infinity
+    init: true
+    working_dir: /workspace
+    volumes:
+      - type: bind
+        source: ..
+        target: /workspace
+    environment:
+      HA_URL: http://homeassistant:8123
+    depends_on:
+      homeassistant:
+        condition: service_started
+    networks:
+      - development
+
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:${HOME_ASSISTANT_TAG:-stable}
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Europe/Copenhagen}
+    ports:
+      - "${HOME_ASSISTANT_PORT:-8123}:8123"
+    volumes:
+      - ../.homeassistant:/config
+      - ../custom_components/energykey:/config/custom_components/energykey:ro
+    networks:
+      - development
+
+networks:
+  development:

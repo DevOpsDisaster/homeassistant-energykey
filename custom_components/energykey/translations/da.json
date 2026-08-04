@@ -1,0 +1,14 @@
+{
+  "title": "EnergyKey",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Opsæt EnergyKey",
+        "description": "Opret en EnergyKey-integration. API-legitimationsoplysninger tilføjes, når integrationen implementeres."
+      }
+    },
+    "abort": {
+      "already_configured": "EnergyKey er allerede konfigureret."
+    }
+  }
+}
