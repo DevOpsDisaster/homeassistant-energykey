@@ -101,10 +101,21 @@ jobs:
         env:
           HOME_ASSISTANT_VERSION: ${{ matrix.home_assistant }}
         run: |
-          if [ "$HOME_ASSISTANT_VERSION" != stable ]; then
-            python -m pip install --no-deps --force-reinstall \
-              "homeassistant==$HOME_ASSISTANT_VERSION"
+          if [ "$HOME_ASSISTANT_VERSION" = stable ]; then
+            HOME_ASSISTANT_VERSION=$(python - <<'PY'
+          import json
+          from urllib.request import urlopen
+
+          from packaging.version import Version
+
+          with urlopen("https://pypi.org/pypi/homeassistant/json") as response:
+              releases = json.load(response)["releases"]
+          print(max(Version(raw) for raw in releases if not Version(raw).is_prerelease))
+          PY
+            )
           fi
+          python -m pip install --no-deps --force-reinstall \
+            "homeassistant==$HOME_ASSISTANT_VERSION"
       - name: Exercise config entry lifecycle
         run: pytest -q tests/test_integration.py
 
