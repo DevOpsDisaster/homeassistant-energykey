@@ -29,6 +29,8 @@ def _runtime(client) -> SimpleNamespace:
         reauth_started=False,
         last_heartbeat_error=None,
         last_successful_heartbeat=None,
+        heartbeat_attempts=0,
+        consecutive_heartbeat_failures=0,
     )
 
 
