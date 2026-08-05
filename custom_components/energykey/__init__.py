@@ -22,6 +22,7 @@ from .api import (
     EnergyKeyConnectionError,
     EnergyKeyProtocolError,
     EnergyKeyRateLimitError,
+    normalize_base_url,
 )
 from .const import (
     CONF_BASE_URL,
@@ -44,11 +45,46 @@ PLATFORMS: list[Platform] = [Platform.SENSOR]
 type EnergyKeyConfigEntry = ConfigEntry[EnergyKeyRuntimeData]
 
 
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Migrate legacy config entries while preserving their identity."""
+    if entry.version > 2:
+        return False
+    if entry.version == 2:
+        return True
+
+    data = dict(entry.data)
+    try:
+        data[CONF_BASE_URL] = normalize_base_url(str(data[CONF_BASE_URL]))
+    except (KeyError, ValueError):
+        return False
+
+    cookies = data.pop(CONF_COOKIES, None)
+    if isinstance(cookies, dict) and all(
+        isinstance(key, str) and isinstance(value, str)
+        for key, value in cookies.items()
+    ):
+        store = EnergyKeyStore(hass, entry.entry_id)
+        await store.async_load()
+        await store.async_set_cookies(cookies)
+    else:
+        return False
+
+    hass.config_entries.async_update_entry(
+        entry,
+        data=data,
+        version=2,
+        minor_version=1,
+    )
+    return True
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: EnergyKeyConfigEntry) -> bool:
     """Set up EnergyKey from a config entry."""
     store = EnergyKeyStore(hass, entry.entry_id)
     await store.async_load()
-    cookies = store.cookies or dict(entry.data[CONF_COOKIES])
+    cookies = store.cookies or dict(entry.data.get(CONF_COOKIES, {}))
+    if not cookies:
+        raise ConfigEntryNotReady("EnergyKey session state is missing")
 
     session = async_create_clientsession(hass, cookie_jar=CookieJar())
     client = EnergyKeyClient(session, entry.data[CONF_BASE_URL], cookies)

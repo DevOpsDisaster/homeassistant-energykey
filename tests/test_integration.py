@@ -10,14 +10,17 @@ from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.const import EntityCategory
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.storage import Store
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.energykey import async_migrate_entry
 from custom_components.energykey.api import _parse_consumption
 from custom_components.energykey.const import (
     CONF_ACCOUNT_ID,
     CONF_BASE_URL,
     CONF_COOKIES,
     DOMAIN,
+    STORAGE_KEY_PREFIX,
 )
 from custom_components.energykey.diagnostics import (
     async_get_config_entry_diagnostics,
@@ -336,7 +339,7 @@ async def test_diagnostics_redacts_identifiers_and_values(hass, load_fixture) ->
     assert "raw-heat" not in serialized
     assert "100.59" not in serialized
     assert "2500.4" not in serialized
-    assert diagnostics["entry"][CONF_COOKIES] == "**REDACTED**"
+    assert CONF_COOKIES not in diagnostics["entry"]
     assert diagnostics["coordinator"]["unsupported_meter_count"] == 0
     assert await hass.config_entries.async_unload(entry.entry_id)
 
@@ -373,3 +376,38 @@ async def test_store_mutators_round_trip_and_return_copies(hass) -> None:
     await restored.async_remove()
     assert restored.cookies == {}
     assert restored.history_keys == ()
+
+
+async def test_config_entry_migration_moves_cookies_to_private_storage(hass) -> None:
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        version=1,
+        minor_version=1,
+        unique_id=ACCOUNT_ID,
+        data={
+            CONF_BASE_URL: f"{BASE_URL}/",
+            CONF_COOKIES: BOOTSTRAP_COOKIES,
+            CONF_ACCOUNT_ID: ACCOUNT_ID,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    assert await async_migrate_entry(hass, entry)
+    assert entry.version == 2
+    assert entry.data[CONF_BASE_URL] == BASE_URL
+    assert CONF_COOKIES not in entry.data
+    restored = EnergyKeyStore(hass, entry.entry_id)
+    await restored.async_load()
+    assert restored.cookies == BOOTSTRAP_COOKIES
+
+
+async def test_version_one_storage_is_migrated(hass) -> None:
+    entry_id = "legacy-storage"
+    legacy = Store(hass, 1, f"{STORAGE_KEY_PREFIX}.{entry_id}", private=True)
+    await legacy.async_save({"cookies": BOOTSTRAP_COOKIES, "history": {"opaque": []}})
+
+    restored = EnergyKeyStore(hass, entry_id)
+    await restored.async_load()
+    assert restored.cookies == BOOTSTRAP_COOKIES
+    assert restored.history_keys == ("opaque",)
+    assert restored.statistics_offset("opaque") == 0
