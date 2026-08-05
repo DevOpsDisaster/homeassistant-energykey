@@ -95,9 +95,7 @@ jobs:
           python-version: "3.14"
           cache: pip
           cache-dependency-path: requirements-dev.txt
-      - name: Install test harness
-        run: python -m pip install -r requirements-dev.txt
-      - name: Select Home Assistant version
+      - name: Install matching Home Assistant test harness
         env:
           HOME_ASSISTANT_VERSION: ${{ matrix.home_assistant }}
         run: |
@@ -114,7 +112,7 @@ jobs:
           PY
             )
           fi
-          python -m pip install --no-deps --force-reinstall \
+          python -m pip install -r requirements-dev.txt \
             "homeassistant==$HOME_ASSISTANT_VERSION"
       - name: Exercise config entry lifecycle
         run: pytest -q tests/test_integration.py
