@@ -97,6 +97,10 @@ class FakeEnergyKeyClient:
             load_fixture("heat_temperature.json"), self.heat_temperature_view
         )
         self.async_heartbeat = AsyncMock()
+        self.request_order: list[str] = []
+        self.async_heartbeat.side_effect = lambda: self.request_order.append(
+            "heartbeat"
+        )
         self.detach_called = False
         self.authentication_rejected = False
         self.consumption_started = asyncio.Event()
@@ -114,6 +118,7 @@ class FakeEnergyKeyClient:
         return 0
 
     async def async_get_meters(self) -> list[EnergyKeyMeter]:
+        self.request_order.append("meters")
         return [self.water_meter, self.heat_meter]
 
     async def async_get_views(self, meter: EnergyKeyMeter) -> list[ConsumptionView]:
@@ -122,6 +127,7 @@ class FakeEnergyKeyClient:
         return [self.heat_view, self.heat_volume_view, self.heat_temperature_view]
 
     async def async_get_consumption(self, meter, view, start, end):
+        self.request_order.append("consumption")
         self.consumption_started.set()
         if self.consumption_gate is not None:
             await self.consumption_gate.wait()
@@ -156,6 +162,23 @@ async def _setup_entry(hass, load_fixture):
     await entry.runtime_data.data_refresh_task
     await hass.async_block_till_done()
     return entry, fake_client
+
+
+async def test_startup_heartbeat_precedes_discovery_and_data_fetch(
+    hass, load_fixture
+) -> None:
+    """Renew the server session before making any startup data request."""
+    entry, client = await _setup_entry(hass, load_fixture)
+
+    assert client.request_order[0] == "heartbeat"
+    assert client.request_order.index("heartbeat") < client.request_order.index(
+        "meters"
+    )
+    assert client.request_order.index("heartbeat") < client.request_order.index(
+        "consumption"
+    )
+    client.async_heartbeat.assert_awaited_once()
+    assert entry.runtime_data.last_successful_heartbeat is not None
 
 
 def test_heartbeat_entity_id_is_specific_to_each_account() -> None:

@@ -10,7 +10,7 @@ from aiohttp import CookieJar
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.dispatcher import async_dispatcher_send
@@ -61,7 +61,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: EnergyKeyConfigEntry) ->
     entry.runtime_data = runtime
 
     try:
+        # Touch the server before discovery so a session with a short idle timeout
+        # is renewed as soon as Home Assistant starts the config entry.
+        await client.async_heartbeat()
+        await store.async_set_cookies(client.cookie_state)
+        runtime.last_successful_heartbeat = datetime.now(UTC)
         await coordinator.async_prepare()
+    except EnergyKeyAuthError as err:
+        raise ConfigEntryAuthFailed("The EnergyKey session has expired") from err
+    except (
+        EnergyKeyConnectionError,
+        EnergyKeyProtocolError,
+        EnergyKeyRateLimitError,
+    ) as err:
+        raise ConfigEntryNotReady(str(err)) from err
     except UpdateFailed as err:
         raise ConfigEntryNotReady(str(err)) from err
 

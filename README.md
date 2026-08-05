@@ -66,8 +66,9 @@ shown as portal reference data; they are not treated as measured consumption.
 EnergyKey does not expose a supported authentication API for this use case.
 You therefore sign in normally in a browser and copy the browser's `Cookie`
 request header into Home Assistant. Home Assistant stores the bootstrap
-cookies locally, maintains its own private HTTP session, and sends an EnergyKey
-heartbeat when the session has been inactive for 15 minutes.
+cookies locally, maintains its own private HTTP session, sends an EnergyKey
+heartbeat immediately when the integration starts, and then sends another when
+the session has been inactive for 15 minutes.
 
 A definitive authentication rejection, including HTTP 401 or 403, latches the
 client as rejected, stops the heartbeat loop, and starts one reauthentication
