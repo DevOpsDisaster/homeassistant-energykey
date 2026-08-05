@@ -276,14 +276,22 @@ for cookies, tokens, addresses, customer details, and meter identifiers.
 
 ## Development
 
-The repository includes a Dev Container with Python 3.14 and a separate Home
-Assistant container. Docker and an editor with Dev Container support are the
-only host prerequisites.
+The repository includes a Dev Container with Python 3.14, Docker, GitHub CLI,
+and a separate Home Assistant container. Docker and an editor with Dev
+Container support are the only host prerequisites.
 
 1. Open the repository and run **Dev Containers: Reopen in Container**.
 2. Wait for the `dev` and `homeassistant` services to start.
 3. Open forwarded port 8123 and complete Home Assistant onboarding.
 4. Add EnergyKey under **Settings → Devices & services**.
+
+GitHub CLI is available as `gh`. Authenticate it when repository operations are
+needed; credentials are kept out of the image and repository:
+
+```sh
+gh auth login
+gh auth status
+```
 
 The component directory is mounted read-only into the Home Assistant
 container. Restart it after source changes:
