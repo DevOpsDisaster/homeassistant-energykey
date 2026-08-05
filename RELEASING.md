@@ -75,6 +75,8 @@ run with no ignored checks.
 
 ## Release checklist
 
+- [ ] The versioned [live acceptance process](docs/live-acceptance.md) passes,
+      and its privacy-safe record has been validated.
 - [ ] Manifest, tag, changelog, and documentation use the same version.
 - [ ] Ruff, formatting, pytest, coverage, Hassfest, HACS validation, and
       Gitleaks pass on the exact tagged commit.

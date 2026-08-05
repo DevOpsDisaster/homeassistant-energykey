@@ -12,6 +12,7 @@ Use the included Dev Container or Python 3.14, then run:
 ruff check .
 ruff format --check .
 pytest --cov=custom_components.energykey --cov-report=term --cov-fail-under=90
+python scripts/validate_live_acceptance.py tests/fixtures/live_acceptance.json
 ```
 
 GitHub Actions additionally runs Hassfest, HACS validation, and Gitleaks. HACS
