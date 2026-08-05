@@ -8,8 +8,8 @@ prereleases.
 
 ### Added
 
-- Home Assistant compatibility jobs now exercise the complete config-entry
-  setup, entity creation, refresh, persistence, diagnostics, and unload lifecycle.
+- Tested config-entry and private-storage migrations preserve credentials,
+  history identifiers, and statistics offsets across upgrades.
 - Publication, contribution, security, troubleshooting, dashboard, and
   removal documentation.
 - Secret scanning, dependency updates, pinned GitHub Actions, and a GitHub-only

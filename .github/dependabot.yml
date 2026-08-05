@@ -16,3 +16,19 @@ updates:
       development-dependencies:
         patterns:
           - "*"
+  - package-ecosystem: devcontainers
+    directory: "/.devcontainer"
+    schedule:
+      interval: monthly
+    groups:
+      devcontainer-features:
+        patterns:
+          - "*"
+  - package-ecosystem: docker
+    directory: "/.devcontainer"
+    schedule:
+      interval: monthly
+    groups:
+      devcontainer-images:
+        patterns:
+          - "*"
