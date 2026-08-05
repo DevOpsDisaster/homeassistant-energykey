@@ -1,0 +1,25 @@
+{
+  "format_version": 1,
+  "release": "0.1.0-rc.1",
+  "home_assistant_version": "2026.7.0",
+  "tested_at": "2026-08-05T12:00:00Z",
+  "portal_profile": "synthetic-danish-energykey-tenant",
+  "capabilities": [
+    "water_consumption",
+    "heat_consumption",
+    "heat_volume",
+    "heat_temperature"
+  ],
+  "scenarios": {
+    "setup": "pass",
+    "initial_background_load": "pass",
+    "heartbeat": "pass",
+    "restart": "pass",
+    "authentication_rejection": "pass",
+    "reauthentication": "pass",
+    "delayed_data": "pass",
+    "revised_data": "pass",
+    "statistics_backfill": "pass",
+    "removal": "pass"
+  }
+}
