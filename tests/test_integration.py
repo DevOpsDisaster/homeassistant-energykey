@@ -155,6 +155,7 @@ async def _setup_entry(hass, load_fixture):
     fake_client = FakeEnergyKeyClient(load_fixture)
     with patch("custom_components.energykey.EnergyKeyClient", return_value=fake_client):
         assert await hass.config_entries.async_setup(entry.entry_id)
+    assert CONF_COOKIES not in entry.data
     assert entry.runtime_data.data_refresh_task is not None
     await entry.runtime_data.data_refresh_task
     await hass.async_block_till_done()
@@ -399,6 +400,23 @@ async def test_config_entry_migration_moves_cookies_to_private_storage(hass) -> 
     restored = EnergyKeyStore(hass, entry.entry_id)
     await restored.async_load()
     assert restored.cookies == BOOTSTRAP_COOKIES
+
+
+async def test_config_entry_migration_rejects_incomplete_cookies(hass) -> None:
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        version=1,
+        minor_version=1,
+        data={
+            CONF_BASE_URL: BASE_URL,
+            CONF_COOKIES: {"wt3SessionId": "only-one-cookie"},
+        },
+    )
+    entry.add_to_hass(hass)
+
+    assert not await async_migrate_entry(hass, entry)
+    assert entry.version == 1
+    assert entry.data[CONF_COOKIES] == {"wt3SessionId": "only-one-cookie"}
 
 
 async def test_version_one_storage_is_migrated(hass) -> None:

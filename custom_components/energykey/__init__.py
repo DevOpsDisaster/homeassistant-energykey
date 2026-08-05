@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Mapping
 from datetime import UTC, datetime
 
 from aiohttp import CookieJar
@@ -30,6 +31,7 @@ from .const import (
     DOMAIN,
     HEARTBEAT_INTERVAL,
     HEARTBEAT_RETRY_INTERVAL,
+    REQUIRED_COOKIES,
     heartbeat_update_signal,
 )
 from .coordinator import EnergyKeyCoordinator
@@ -45,6 +47,17 @@ PLATFORMS: list[Platform] = [Platform.SENSOR]
 type EnergyKeyConfigEntry = ConfigEntry[EnergyKeyRuntimeData]
 
 
+def _valid_cookies(value: object) -> dict[str, str] | None:
+    """Return cookies only when the authenticated session requirements are met."""
+    if not isinstance(value, Mapping) or not all(
+        isinstance(key, str) and isinstance(item, str) and item
+        for key, item in value.items()
+    ):
+        return None
+    cookies = dict(value)
+    return cookies if REQUIRED_COOKIES.issubset(cookies) else None
+
+
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Migrate legacy config entries while preserving their identity."""
     if entry.version > 2:
@@ -58,11 +71,8 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     except (KeyError, ValueError):
         return False
 
-    cookies = data.pop(CONF_COOKIES, None)
-    if isinstance(cookies, dict) and all(
-        isinstance(key, str) and isinstance(value, str)
-        for key, value in cookies.items()
-    ):
+    cookies = _valid_cookies(data.pop(CONF_COOKIES, None))
+    if cookies is not None:
         store = EnergyKeyStore(hass, entry.entry_id)
         await store.async_load()
         await store.async_set_cookies(cookies)
@@ -82,9 +92,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: EnergyKeyConfigEntry) ->
     """Set up EnergyKey from a config entry."""
     store = EnergyKeyStore(hass, entry.entry_id)
     await store.async_load()
-    cookies = store.cookies or dict(entry.data.get(CONF_COOKIES, {}))
-    if not cookies:
+    cookies = _valid_cookies(store.cookies) or _valid_cookies(
+        entry.data.get(CONF_COOKIES)
+    )
+    if cookies is None:
         raise ConfigEntryNotReady("EnergyKey session state is missing")
+    if CONF_COOKIES in entry.data:
+        await store.async_set_cookies(cookies)
+        data = dict(entry.data)
+        data.pop(CONF_COOKIES)
+        hass.config_entries.async_update_entry(entry, data=data)
 
     session = async_create_clientsession(hass, cookie_jar=CookieJar())
     client = EnergyKeyClient(session, entry.data[CONF_BASE_URL], cookies)
