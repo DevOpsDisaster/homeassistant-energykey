@@ -76,9 +76,13 @@ jobs:
           print(max(stable)[1])
           PY
             )
+            python -m pip install -r requirements-dev.txt
+            python -m pip install --upgrade \
+              "homeassistant==$HOME_ASSISTANT_VERSION"
+          else
+            python -m pip install -r requirements-dev.txt \
+              "homeassistant==$HOME_ASSISTANT_VERSION"
           fi
-          python -m pip install -r requirements-dev.txt \
-            "homeassistant==$HOME_ASSISTANT_VERSION"
       - name: Exercise config entry lifecycle
         run: pytest -q tests/test_integration.py
 
