@@ -6,6 +6,8 @@ prereleases.
 
 ## Unreleased
 
+## 0.1.0-rc.1 - 2026-08-05
+
 ### Added
 
 - Publication, contribution, security, troubleshooting, dashboard, and
