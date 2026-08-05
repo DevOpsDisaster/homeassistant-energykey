@@ -19,7 +19,10 @@ class EnergyKeyStore:
     def __init__(self, hass: HomeAssistant, entry_id: str) -> None:
         """Initialize an entry-scoped store."""
         self._store: Store[dict[str, Any]] = Store(
-            hass, STORAGE_VERSION, f"{STORAGE_KEY_PREFIX}.{entry_id}"
+            hass,
+            STORAGE_VERSION,
+            f"{STORAGE_KEY_PREFIX}.{entry_id}",
+            private=True,
         )
         self._lock = asyncio.Lock()
         self._cookies: dict[str, str] = {}

@@ -118,7 +118,8 @@ class EnergyKeyCoordinator(DataUpdateCoordinator[EnergyKeyData]):
         discovered: list[MeterSnapshot] = []
         for plan in self._supported:
             normalized = _view_unit(plan.consumption_view)
-            assert normalized is not None
+            if normalized is None:
+                raise RuntimeError("Prepared consumption view has an unsupported unit")
             kind, native_unit = normalized
             discovered.append(
                 MeterSnapshot(
