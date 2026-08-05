@@ -1,0 +1,60 @@
+{
+  "config": {
+    "abort": {
+      "already_configured": "This EnergyKey account is already configured.",
+      "reauth_successful": "Reauthentication was successful."
+    },
+    "error": {
+      "cannot_connect": "Could not connect to EnergyKey.",
+      "invalid_auth": "EnergyKey rejected these cookies. Copy a fresh Cookie header and try again.",
+      "invalid_cookie": "The Cookie header is invalid or is missing wt3SessionId or wt3login.",
+      "invalid_response": "EnergyKey returned an unsupported response. Check the logs for non-sensitive details.",
+      "invalid_url": "Enter an HTTPS portal URL below wt.energykey.dk without a path, query, or credentials.",
+      "unknown": "An unexpected error occurred.",
+      "wrong_account": "These cookies belong to a different EnergyKey account."
+    },
+    "step": {
+      "reauth_confirm": {
+        "data": {
+          "cookies": "Cookie header"
+        },
+        "description": "The EnergyKey session for {name} has expired. Paste a fresh Cookie header from the same account.",
+        "title": "Reauthenticate EnergyKey"
+      },
+      "user": {
+        "data": {
+          "base_url": "Portal URL",
+          "cookies": "Cookie header"
+        },
+        "data_description": {
+          "base_url": "The EnergyKey address shown in your browser, without any path.",
+          "cookies": "Paste either the Cookie value or the complete Cookie: line. It is stored locally by Home Assistant."
+        },
+        "description": "Sign in to EnergyKey in your browser, copy the request Cookie header, and paste it below.",
+        "title": "Connect to EnergyKey"
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "expected_daily_consumption": {
+        "name": "Expected daily consumption"
+      },
+      "latest_daily_consumption": {
+        "name": "Latest completed daily consumption"
+      },
+      "latest_daily_heat_volume": {
+        "name": "Latest completed daily heat volume"
+      },
+      "latest_flow_temperature": {
+        "name": "Latest flow temperature"
+      },
+      "latest_return_temperature": {
+        "name": "Latest return temperature"
+      },
+      "last_successful_heartbeat": {
+        "name": "Last successful heartbeat"
+      }
+    }
+  }
+}

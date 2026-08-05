@@ -1,6 +1,13 @@
 [tool.ruff]
+# Keep source syntax parseable by the host-side 3.13 test runner while the
+# Dev Container and supported Home Assistant release use Python 3.14.
 target-version = "py313"
 line-length = 88
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "ASYNC"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+pythonpath = ["."]
+testpaths = ["tests"]

@@ -1,9 +1,11 @@
 {
   "domain": "energykey",
   "name": "EnergyKey",
+  "after_dependencies": ["recorder"],
   "codeowners": ["@DevOpsDisaster"],
   "config_flow": true,
   "documentation": "https://github.com/DevOpsDisaster/homeassistant-energykey",
+  "integration_type": "hub",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/DevOpsDisaster/homeassistant-energykey/issues",
   "requirements": [],

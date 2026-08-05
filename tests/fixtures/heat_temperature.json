@@ -1,0 +1,46 @@
+{
+  "keyfigure": {
+    "prescaleUnit": {
+      "id": "celcius",
+      "unit": "celcius"
+    }
+  },
+  "series": [
+    {
+      "key": "forwardVolumeTemp.actual",
+      "name": "Synthetic flow temperature",
+      "serieData": {
+        "datapoints": [
+          {
+            "start": "2026-07-29T00:00:00Z",
+            "end": "2026-07-30T00:00:00Z",
+            "value": 62.5
+          },
+          {
+            "start": "2026-07-30T00:00:00Z",
+            "end": "2026-07-31T00:00:00Z",
+            "value": 0
+          }
+        ]
+      }
+    },
+    {
+      "key": "returnVolumeTemp.actual",
+      "name": "Synthetic return temperature",
+      "serieData": {
+        "datapoints": [
+          {
+            "start": "2026-07-29T00:00:00Z",
+            "end": "2026-07-30T00:00:00Z",
+            "value": 34.2
+          },
+          {
+            "start": "2026-07-30T00:00:00Z",
+            "end": "2026-07-31T00:00:00Z",
+            "value": 0
+          }
+        ]
+      }
+    }
+  ]
+}

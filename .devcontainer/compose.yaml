@@ -23,6 +23,12 @@ services:
   homeassistant:
     image: ghcr.io/home-assistant/home-assistant:${HOME_ASSISTANT_TAG:-stable}
     restart: unless-stopped
+    # dns:
+    #   - 1.1.1.1
+    #   - 8.8.8.8
+    # dns_opt:
+    #   - no-aaaa
+    #   - use-vc
     environment:
       TZ: ${TZ:-Europe/Copenhagen}
     ports:

@@ -1,0 +1,27 @@
+{
+  "views": [
+    {
+      "id": "synthetic-water-view",
+      "visible": true,
+      "nameType": "usageConsumption",
+      "unit": {
+        "id": "cubic_meter",
+        "unit": "m3"
+      },
+      "zoomLevels": [
+        {
+          "id": "month_by_days"
+        }
+      ]
+    },
+    {
+      "id": "synthetic-hidden-view",
+      "visible": false,
+      "nameType": "billing",
+      "unit": {
+        "id": "currency",
+        "unit": "DKK"
+      }
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability privately
+    url: https://github.com/DevOpsDisaster/homeassistant-energykey/security/advisories/new
+    about: Never disclose EnergyKey cookies, tokens, or private utility data in a public issue.

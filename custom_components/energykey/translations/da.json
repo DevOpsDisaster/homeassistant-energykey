@@ -1,14 +1,60 @@
 {
-  "title": "EnergyKey",
   "config": {
-    "step": {
-      "user": {
-        "title": "Opsæt EnergyKey",
-        "description": "Opret en EnergyKey-integration. API-legitimationsoplysninger tilføjes, når integrationen implementeres."
-      }
-    },
     "abort": {
-      "already_configured": "EnergyKey er allerede konfigureret."
+      "already_configured": "Denne EnergyKey-konto er allerede konfigureret.",
+      "reauth_successful": "Godkendelsen blev fornyet."
+    },
+    "error": {
+      "cannot_connect": "Der kunne ikke oprettes forbindelse til EnergyKey.",
+      "invalid_auth": "EnergyKey afviste disse cookies. Kopiér en ny Cookie-header, og prøv igen.",
+      "invalid_cookie": "Cookie-headeren er ugyldig eller mangler wt3SessionId eller wt3login.",
+      "invalid_response": "EnergyKey returnerede et svar, som ikke understøttes. Se loggen for oplysninger uden følsomme data.",
+      "invalid_url": "Angiv en HTTPS-portaladresse under wt.energykey.dk uden sti, forespørgsel eller loginoplysninger.",
+      "unknown": "Der opstod en uventet fejl.",
+      "wrong_account": "Disse cookies tilhører en anden EnergyKey-konto."
+    },
+    "step": {
+      "reauth_confirm": {
+        "data": {
+          "cookies": "Cookie-header"
+        },
+        "description": "EnergyKey-sessionen for {name} er udløbet. Indsæt en ny Cookie-header fra den samme konto.",
+        "title": "Godkend EnergyKey igen"
+      },
+      "user": {
+        "data": {
+          "base_url": "Portaladresse",
+          "cookies": "Cookie-header"
+        },
+        "data_description": {
+          "base_url": "EnergyKey-adressen, der vises i browseren, uden nogen sti.",
+          "cookies": "Indsæt enten Cookie-værdien eller hele Cookie:-linjen. Den gemmes lokalt af Home Assistant."
+        },
+        "description": "Log ind på EnergyKey i din browser, kopiér Cookie-headeren fra en forespørgsel, og indsæt den nedenfor.",
+        "title": "Forbind til EnergyKey"
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "expected_daily_consumption": {
+        "name": "Forventet døgnforbrug"
+      },
+      "latest_daily_consumption": {
+        "name": "Seneste afsluttede døgnforbrug"
+      },
+      "latest_daily_heat_volume": {
+        "name": "Seneste afsluttede varmevolumen"
+      },
+      "latest_flow_temperature": {
+        "name": "Seneste fremløbstemperatur"
+      },
+      "latest_return_temperature": {
+        "name": "Seneste returløbstemperatur"
+      },
+      "last_successful_heartbeat": {
+        "name": "Seneste vellykkede heartbeat"
+      }
     }
   }
 }
