@@ -106,9 +106,12 @@ jobs:
 
           from packaging.version import Version
 
-          with urlopen("https://pypi.org/pypi/homeassistant/json") as response:
+          with urlopen(
+              "https://pypi.org/pypi/homeassistant/json", timeout=30
+          ) as response:
               releases = json.load(response)["releases"]
-          print(max(Version(raw) for raw in releases if not Version(raw).is_prerelease))
+          versions = (Version(raw) for raw in releases)
+          print(max(version for version in versions if not version.is_prerelease))
           PY
             )
           fi
