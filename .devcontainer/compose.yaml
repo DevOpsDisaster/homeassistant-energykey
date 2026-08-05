@@ -10,7 +10,7 @@ services:
     working_dir: /workspace
     volumes:
       - type: bind
-        source: ${HOST_PROJECT_DIR:-..}
+        source: ..
         target: /workspace
     environment:
       HA_URL: http://homeassistant:8123
@@ -34,8 +34,8 @@ services:
     ports:
       - "${HOME_ASSISTANT_PORT:-8123}:8123"
     volumes:
-      - ${HOST_PROJECT_DIR:-..}/.homeassistant:/config
-      - ${HOST_PROJECT_DIR:-..}/custom_components/energykey:/config/custom_components/energykey:ro
+      - ../.homeassistant:/config
+      - ../custom_components/energykey:/config/custom_components/energykey:ro
     networks:
       - development
 

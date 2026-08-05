@@ -4,9 +4,6 @@
   "service": "dev",
   "runServices": ["dev", "homeassistant"],
   "workspaceFolder": "/workspace",
-  "remoteEnv": {
-    "HOST_PROJECT_DIR": "${localWorkspaceFolder}"
-  },
   "shutdownAction": "stopCompose",
   "remoteUser": "vscode",
   "initializeCommand": "docker compose -f \"${localWorkspaceFolder}/.devcontainer/compose.yaml\" build dev",
