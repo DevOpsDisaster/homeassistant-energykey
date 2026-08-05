@@ -192,24 +192,29 @@ async def _async_heartbeat_loop(
     while True:
         wait_seconds = max(1.0, normal_wait - runtime.client.seconds_since_activity)
         await asyncio.sleep(wait_seconds)
+        runtime.heartbeat_attempts += 1
         try:
             await runtime.client.async_heartbeat()
             await runtime.store.async_set_cookies(runtime.client.cookie_state)
         except EnergyKeyAuthError:
+            runtime.consecutive_heartbeat_failures += 1
             runtime.last_heartbeat_error = "authentication"
             if not runtime.reauth_started:
                 runtime.reauth_started = True
                 entry.async_start_reauth(hass)
             return
         except EnergyKeyRateLimitError as err:
+            runtime.consecutive_heartbeat_failures += 1
             runtime.last_heartbeat_error = "rate_limited"
             server_wait = err.retry_after or retry_wait
             await asyncio.sleep(max(retry_wait, min(server_wait, normal_wait)))
             continue
         except (EnergyKeyConnectionError, EnergyKeyProtocolError):
+            runtime.consecutive_heartbeat_failures += 1
             runtime.last_heartbeat_error = "connection"
             await asyncio.sleep(retry_wait)
             continue
         runtime.last_successful_heartbeat = datetime.now(UTC)
         runtime.last_heartbeat_error = None
+        runtime.consecutive_heartbeat_failures = 0
         async_dispatcher_send(hass, heartbeat_update_signal(entry.entry_id))

@@ -8,6 +8,7 @@ from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, time, timedelta
+from time import monotonic
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from homeassistant.config_entries import ConfigEntry
@@ -84,6 +85,21 @@ class _MeterPlan:
     temperature_view: ConsumptionView | None = None
 
 
+def _diagnostic_exception_name(exception: BaseException | None) -> str:
+    """Return the deepest non-sensitive exception class in a failure chain."""
+    if exception is None:
+        return "unknown"
+    current = exception
+    seen: set[int] = set()
+    while id(current) not in seen:
+        seen.add(id(current))
+        nested = current.__cause__ or current.__context__
+        if nested is None:
+            break
+        current = nested
+    return type(current).__name__
+
+
 class EnergyKeyCoordinator(DataUpdateCoordinator[EnergyKeyData]):
     """Coordinate meter discovery, history merging, and daily refreshes."""
 
@@ -110,7 +126,25 @@ class EnergyKeyCoordinator(DataUpdateCoordinator[EnergyKeyData]):
         self.unsupported_meter_count = 0
         self.history_error_count = 0
         self.last_successful_refresh: datetime | None = None
+        self.last_refresh_duration_seconds: float | None = None
+        self.refresh_attempts = 0
+        self.consecutive_refresh_failures = 0
+        self.last_refresh_error: str | None = None
         self.discovered_meters: tuple[MeterSnapshot, ...] = ()
+
+    async def async_refresh(self) -> None:
+        """Refresh data and retain privacy-safe operational measurements."""
+        self.refresh_attempts += 1
+        started = monotonic()
+        await super().async_refresh()
+        self.last_refresh_duration_seconds = round(monotonic() - started, 3)
+        if self.last_update_success:
+            self.consecutive_refresh_failures = 0
+            self.last_refresh_error = None
+            return
+        self.consecutive_refresh_failures += 1
+        exception = self.last_exception
+        self.last_refresh_error = _diagnostic_exception_name(exception)
 
     async def async_prepare(self) -> None:
         """Discover devices without blocking setup on consumption history."""

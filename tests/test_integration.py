@@ -342,6 +342,17 @@ async def test_diagnostics_redacts_identifiers_and_values(hass, load_fixture) ->
     assert "2500.4" not in serialized
     assert CONF_COOKIES not in diagnostics["entry"]
     assert diagnostics["coordinator"]["unsupported_meter_count"] == 0
+    assert diagnostics["coordinator"]["supported_meter_count"] == 2
+    assert diagnostics["coordinator"]["refresh_attempts"] == 1
+    assert diagnostics["coordinator"]["consecutive_refresh_failures"] == 0
+    assert diagnostics["coordinator"]["last_refresh_error"] is None
+    assert diagnostics["coordinator"]["last_refresh_duration_seconds"] >= 0
+    assert diagnostics["session"]["heartbeat_attempts"] == 0
+    assert diagnostics["session"]["consecutive_heartbeat_failures"] == 0
+    assert diagnostics["integration"] == {
+        "config_entry_version": 2,
+        "config_entry_minor_version": 1,
+    }
     assert await hass.config_entries.async_unload(entry.entry_id)
 
 

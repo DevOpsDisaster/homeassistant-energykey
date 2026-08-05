@@ -7,10 +7,12 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from homeassistant.const import UnitOfEnergy, UnitOfVolume
+from homeassistant.helpers.update_coordinator import UpdateFailed
 
 from custom_components.energykey.api import EnergyKeyProtocolError
 from custom_components.energykey.coordinator import (
     _assign_device_names,
+    _diagnostic_exception_name,
     _merge_history,
     _merge_history_and_offset,
     _missing_month_windows,
@@ -27,6 +29,18 @@ from custom_components.energykey.models import (
     MeterKind,
     MeterSnapshot,
 )
+
+
+def test_diagnostic_exception_name_unwraps_failure_chain() -> None:
+    try:
+        try:
+            raise ConnectionError("sensitive provider detail")
+        except ConnectionError as err:
+            raise UpdateFailed("wrapper") from err
+    except UpdateFailed as err:
+        assert _diagnostic_exception_name(err) == "ConnectionError"
+
+    assert _diagnostic_exception_name(None) == "unknown"
 
 
 def _point(day: int, value: float, *, complete: bool = True) -> ConsumptionPoint:
