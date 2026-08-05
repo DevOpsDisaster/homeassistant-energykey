@@ -1,4 +1,4 @@
-pytest>=9.1.1,<10
+pytest==9.0.3
 pytest-aiohttp>=1.1.1,<2
 pytest-cov>=7.1.0,<8
 pytest-homeassistant-custom-component>=0.13.351,<0.14
