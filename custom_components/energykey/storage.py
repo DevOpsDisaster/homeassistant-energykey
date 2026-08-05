@@ -13,12 +13,31 @@ from .const import STORAGE_KEY_PREFIX, STORAGE_VERSION
 from .models import ConsumptionPoint
 
 
+class _EnergyKeyVersionedStore(Store[dict[str, Any]]):
+    """Migrate persisted integration state between storage versions."""
+
+    async def _async_migrate_func(
+        self,
+        old_major_version: int,
+        old_minor_version: int,
+        old_data: Any,
+    ) -> dict[str, Any]:
+        """Upgrade the version-one state without exposing its contents."""
+        if old_major_version != 1 or not isinstance(old_data, dict):
+            raise ValueError(
+                f"Unsupported EnergyKey storage version {old_major_version}"
+            )
+        migrated = dict(old_data)
+        migrated.setdefault("statistics_offsets", {})
+        return migrated
+
+
 class EnergyKeyStore:
     """Serialize sensitive session state and normalized meter history."""
 
     def __init__(self, hass: HomeAssistant, entry_id: str) -> None:
         """Initialize an entry-scoped store."""
-        self._store: Store[dict[str, Any]] = Store(
+        self._store: Store[dict[str, Any]] = _EnergyKeyVersionedStore(
             hass,
             STORAGE_VERSION,
             f"{STORAGE_KEY_PREFIX}.{entry_id}",
