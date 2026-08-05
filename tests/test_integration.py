@@ -27,7 +27,7 @@ from custom_components.energykey.models import (
     EnergyKeyMeter,
     MeterKind,
 )
-from custom_components.energykey.sensor import EnergyKeySensor
+from custom_components.energykey.sensor import EnergyKeyHeartbeatSensor, EnergyKeySensor
 from custom_components.energykey.storage import EnergyKeyStore
 
 BASE_URL = "https://tenant.wt.energykey.dk"
@@ -158,6 +158,19 @@ async def _setup_entry(hass, load_fixture):
     return entry, fake_client
 
 
+def test_heartbeat_entity_id_is_specific_to_each_account() -> None:
+    """Heartbeat IDs identify EnergyKey and remain distinct across entries."""
+    first = MockConfigEntry(domain=DOMAIN, unique_id="a" * 64)
+    second = MockConfigEntry(domain=DOMAIN, unique_id="b" * 64)
+
+    assert EnergyKeyHeartbeatSensor(first).entity_id == (
+        "sensor.energykey_aaaaaaaaaaaa_last_successful_heartbeat"
+    )
+    assert EnergyKeyHeartbeatSensor(second).entity_id == (
+        "sensor.energykey_bbbbbbbbbbbb_last_successful_heartbeat"
+    )
+
+
 async def test_setup_returns_before_consumption_history_download(
     hass, load_fixture
 ) -> None:
@@ -182,6 +195,17 @@ async def test_setup_returns_before_consumption_history_download(
             config_entry=entry,
             translation_key=translation_key,
         )
+    old_heartbeat = registry.async_get_or_create(
+        "sensor",
+        DOMAIN,
+        f"{ACCOUNT_ID}_last_successful_heartbeat",
+        config_entry=entry,
+        translation_key="last_successful_heartbeat",
+    )
+    registry.async_update_entity(
+        old_heartbeat.entity_id,
+        new_entity_id="sensor.last_successful_heartbeat",
+    )
     client = FakeEnergyKeyClient(load_fixture)
     client.consumption_gate = asyncio.Event()
 
@@ -195,6 +219,9 @@ async def test_setup_returns_before_consumption_history_download(
     assert len(devices) == 2
     entries = er.async_entries_for_config_entry(er.async_get(hass), entry.entry_id)
     assert [item.translation_key for item in entries] == ["last_successful_heartbeat"]
+    assert entries[0].entity_id == (
+        "sensor.energykey_aaaaaaaaaaaa_last_successful_heartbeat"
+    )
 
     client.consumption_gate.set()
     await entry.runtime_data.data_refresh_task
@@ -249,6 +276,9 @@ async def test_all_meters_and_sensor_metadata(hass, load_fixture) -> None:
     assert heartbeat[0].disabled_by is er.RegistryEntryDisabler.INTEGRATION
     assert heartbeat[0].entity_category is EntityCategory.DIAGNOSTIC
     assert heartbeat[0].device_id is None
+    assert heartbeat[0].entity_id == (
+        "sensor.energykey_aaaaaaaaaaaa_last_successful_heartbeat"
+    )
     assert all("raw-" not in item.unique_id for item in entries)
     assert all(
         "12345678" not in item.entity_id and "87654321" not in item.entity_id

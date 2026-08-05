@@ -75,6 +75,17 @@ HEARTBEAT_SENSOR_DESCRIPTION = SensorEntityDescription(
 )
 
 
+def _heartbeat_entity_id(entry: ConfigEntry[EnergyKeyRuntimeData]) -> str:
+    """Return an integration- and account-specific heartbeat entity ID."""
+    account_key = entry.unique_id or entry.entry_id
+    return f"sensor.energykey_{account_key[:12]}_last_successful_heartbeat"
+
+
+def _heartbeat_unique_id(entry: ConfigEntry[EnergyKeyRuntimeData]) -> str:
+    """Return the stable heartbeat registry identifier."""
+    return f"{entry.unique_id or entry.entry_id}_last_successful_heartbeat"
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry[EnergyKeyRuntimeData],
@@ -88,6 +99,16 @@ async def async_setup_entry(
     ):
         if registry_entry.translation_key in REMOVED_SENSOR_TRANSLATION_KEYS:
             entity_registry.async_remove(registry_entry.entity_id)
+        elif (
+            registry_entry.unique_id == _heartbeat_unique_id(entry)
+            and registry_entry.entity_id.startswith(
+                "sensor.last_successful_heartbeat"
+            )
+        ):
+            entity_registry.async_update_entity(
+                registry_entry.entity_id,
+                new_entity_id=_heartbeat_entity_id(entry),
+            )
 
     known_entities: set[tuple[str, str]] = set()
 
@@ -124,9 +145,8 @@ class EnergyKeyHeartbeatSensor(SensorEntity):
     def __init__(self, entry: ConfigEntry[EnergyKeyRuntimeData]) -> None:
         """Initialize the config-entry-level diagnostic sensor."""
         self._entry = entry
-        self._attr_unique_id = (
-            f"{entry.unique_id or entry.entry_id}_last_successful_heartbeat"
-        )
+        self._attr_unique_id = _heartbeat_unique_id(entry)
+        self.entity_id = _heartbeat_entity_id(entry)
 
     @property
     def native_value(self) -> datetime | None:
