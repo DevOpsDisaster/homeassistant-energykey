@@ -37,7 +37,7 @@ jobs:
         run: pytest --cov=custom_components.energykey --cov-report=term --cov-fail-under=90
 
   compatibility:
-    name: Import on Home Assistant ${{ matrix.home_assistant }}
+    name: Integration smoke test on Home Assistant ${{ matrix.home_assistant }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -48,15 +48,24 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-      - name: Import all integration modules
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - name: Install test harness
+        run: python -m pip install -r requirements-dev.txt
+      - name: Select Home Assistant version
         env:
-          HOME_ASSISTANT_TAG: ${{ matrix.home_assistant }}
+          HOME_ASSISTANT_VERSION: ${{ matrix.home_assistant }}
         run: |
-          docker run --rm \
-            --volume "$GITHUB_WORKSPACE:/workspace:ro" \
-            --workdir /workspace \
-            "ghcr.io/home-assistant/home-assistant:$HOME_ASSISTANT_TAG" \
-            python -c "from custom_components.energykey import api, config_flow, coordinator, diagnostics, sensor, statistics, storage"
+          if [ "$HOME_ASSISTANT_VERSION" != stable ]; then
+            python -m pip install --no-deps --force-reinstall \
+              "homeassistant==$HOME_ASSISTANT_VERSION"
+          fi
+      - name: Exercise config entry lifecycle
+        run: pytest -q tests/test_integration.py
 
   hassfest:
     name: Hassfest
