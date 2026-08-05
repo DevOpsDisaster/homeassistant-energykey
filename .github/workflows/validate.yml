@@ -44,7 +44,7 @@ jobs:
       matrix:
         home_assistant:
           - "2026.7.0"
-          - stable
+          - "2026.7.4"
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -58,25 +58,6 @@ jobs:
         env:
           HOME_ASSISTANT_VERSION: ${{ matrix.home_assistant }}
         run: |
-          if [ "$HOME_ASSISTANT_VERSION" = stable ]; then
-            HOME_ASSISTANT_VERSION=$(python - <<'PY'
-          import json
-          import re
-          from urllib.request import urlopen
-
-          with urlopen(
-              "https://pypi.org/pypi/homeassistant/json", timeout=30
-          ) as response:
-              releases = json.load(response)["releases"]
-          stable = [
-              (tuple(map(int, raw.split("."))), raw)
-              for raw in releases
-              if re.fullmatch(r"\d+\.\d+\.\d+", raw)
-          ]
-          print(max(stable)[1])
-          PY
-            )
-          fi
           python -m pip install -r requirements-dev.txt \
             "homeassistant==$HOME_ASSISTANT_VERSION"
       - name: Exercise config entry lifecycle
