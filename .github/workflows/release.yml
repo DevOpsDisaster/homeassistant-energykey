@@ -102,16 +102,19 @@ jobs:
           if [ "$HOME_ASSISTANT_VERSION" = stable ]; then
             HOME_ASSISTANT_VERSION=$(python - <<'PY'
           import json
+          import re
           from urllib.request import urlopen
-
-          from packaging.version import Version
 
           with urlopen(
               "https://pypi.org/pypi/homeassistant/json", timeout=30
           ) as response:
               releases = json.load(response)["releases"]
-          versions = (Version(raw) for raw in releases)
-          print(max(version for version in versions if not version.is_prerelease))
+          stable = [
+              (tuple(map(int, raw.split("."))), raw)
+              for raw in releases
+              if re.fullmatch(r"\d+\.\d+\.\d+", raw)
+          ]
+          print(max(stable)[1])
           PY
             )
           fi
