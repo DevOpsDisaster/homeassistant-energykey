@@ -58,7 +58,10 @@ a HACS custom repository. They do not add the project to HACS' default list.
 4. Create the signed or annotated tag `v0.1.0` on the merge commit and push it.
 5. Confirm the GitHub release workflow succeeds and the generated release is
    not marked as a prerelease.
-6. Merge `main` back into `develop`, then remove the release branch.
+6. Confirm the successful Validate run on `main` triggers the
+   `Sync main to develop` workflow and merges the release back into `develop`.
+   Resolve a failed sync manually if the branches conflict, then remove the
+   release branch.
 
 Do not create a PR against `hacs/default`. Inclusion in HACS' default catalog
 is a separate, deliberate future decision. It requires an explicit manual PR
