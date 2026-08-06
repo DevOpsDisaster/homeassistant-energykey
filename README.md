@@ -80,7 +80,7 @@ meter devices promptly. The first current and historical data refresh starts
 as config-entry-bound background work after setup returns; verified sensor
 entities are added as their series and scaled units become available. The
 first refresh asks for 13 calendar months in bounded monthly requests. Later
-refreshes run every 24 hours and re-fetch the newest 45 days so delayed or
+refreshes run every 6 hours and re-fetch the newest 45 days so delayed or
 corrected supplier readings replace older values. Failed older chunks are
 retried on later refreshes.
 
