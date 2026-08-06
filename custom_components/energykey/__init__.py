@@ -5,11 +5,12 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import UTC, datetime
+from functools import partial
 
 from aiohttp import CookieJar
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.const import EVENT_HOMEASSISTANT_STOP, Platform
+from homeassistant.core import Event, HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
@@ -29,6 +30,7 @@ from .const import (
     DOMAIN,
     HEARTBEAT_INTERVAL,
     HEARTBEAT_RETRY_INTERVAL,
+    SHUTDOWN_HEARTBEAT_TIMEOUT_SECONDS,
     heartbeat_update_signal,
 )
 from .coordinator import EnergyKeyCoordinator
@@ -101,6 +103,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: EnergyKeyConfigEntry) ->
         _async_heartbeat_loop(hass, entry),
         "EnergyKey session heartbeat",
     )
+    entry.async_on_unload(
+        hass.bus.async_listen_once(
+            EVENT_HOMEASSISTANT_STOP,
+            partial(_async_shutdown_heartbeat, entry=entry),
+        )
+    )
     return True
 
 
@@ -139,6 +147,17 @@ async def _async_initial_data_refresh(entry: EnergyKeyConfigEntry) -> None:
     """Fetch current and historical data after config-entry setup returns."""
     await asyncio.sleep(0)
     await entry.runtime_data.coordinator.async_refresh()
+
+
+async def _async_shutdown_heartbeat(_event: Event, entry: EnergyKeyConfigEntry) -> None:
+    """Best-effort session renewal during a graceful Home Assistant shutdown."""
+    runtime = entry.runtime_data
+    try:
+        async with asyncio.timeout(SHUTDOWN_HEARTBEAT_TIMEOUT_SECONDS):
+            await runtime.client.async_heartbeat()
+            await runtime.store.async_set_cookies(runtime.client.cookie_state)
+    except Exception:  # noqa: BLE001 - shutdown must not be blocked by this request
+        _LOGGER.debug("Could not send EnergyKey shutdown heartbeat", exc_info=True)
 
 
 async def _async_heartbeat_loop(

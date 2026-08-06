@@ -215,6 +215,9 @@ only an opaque SHA-256-derived meter key.
   revise the corresponding long-term statistics.
 - The 15-minute heartbeat is designed around an observed 20–25-minute idle
   timeout. A brief network failure is retried after one minute.
+- A graceful Home Assistant shutdown sends one final best-effort heartbeat with
+  a five-second deadline, which can help preserve the session across a short
+  restart.
 - Home Assistant cannot send heartbeats while stopped. A long shutdown may
   require fresh cookies after restart.
 - Heartbeats cannot override an absolute server-side expiry, a logout, a

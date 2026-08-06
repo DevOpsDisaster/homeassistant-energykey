@@ -9,7 +9,10 @@ from unittest.mock import AsyncMock, Mock, call, patch
 
 import pytest
 
-from custom_components.energykey import _async_heartbeat_loop
+from custom_components.energykey import (
+    _async_heartbeat_loop,
+    _async_shutdown_heartbeat,
+)
 from custom_components.energykey.api import (
     EnergyKeyAuthError,
     EnergyKeyConnectionError,
@@ -18,6 +21,7 @@ from custom_components.energykey.api import (
 from custom_components.energykey.const import (
     HEARTBEAT_INTERVAL,
     HEARTBEAT_RETRY_INTERVAL,
+    SHUTDOWN_HEARTBEAT_TIMEOUT_SECONDS,
     heartbeat_update_signal,
 )
 
@@ -135,3 +139,31 @@ async def test_rate_limit_respects_bounded_server_retry() -> None:
 def test_fixed_intervals_match_session_design() -> None:
     assert HEARTBEAT_INTERVAL == timedelta(minutes=15)
     assert HEARTBEAT_RETRY_INTERVAL == timedelta(minutes=1)
+    assert SHUTDOWN_HEARTBEAT_TIMEOUT_SECONDS == 5
+
+
+async def test_shutdown_heartbeat_persists_rotated_cookies() -> None:
+    client = SimpleNamespace(
+        async_heartbeat=AsyncMock(),
+        cookie_state={"wt3SessionId": "rotated"},
+    )
+    runtime = _runtime(client)
+    entry = SimpleNamespace(runtime_data=runtime)
+
+    await _async_shutdown_heartbeat(Mock(), entry)
+
+    client.async_heartbeat.assert_awaited_once_with()
+    runtime.store.async_set_cookies.assert_awaited_once_with(client.cookie_state)
+
+
+async def test_shutdown_heartbeat_failure_does_not_escape(caplog) -> None:
+    client = SimpleNamespace(
+        async_heartbeat=AsyncMock(side_effect=EnergyKeyConnectionError("offline")),
+        cookie_state={},
+    )
+    entry = SimpleNamespace(runtime_data=_runtime(client))
+
+    with caplog.at_level("DEBUG", logger="custom_components.energykey"):
+        await _async_shutdown_heartbeat(Mock(), entry)
+
+    assert "Could not send EnergyKey shutdown heartbeat" in caplog.text

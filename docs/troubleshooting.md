@@ -34,6 +34,11 @@ Initial meter discovery should complete quickly. Historical loading continues
 in the background and can take longer. Failed old month chunks are retried on
 later daily refreshes.
 
+During a graceful Home Assistant shutdown, EnergyKey sends one final heartbeat
+with a five-second deadline and persists any rotated cookies. This cannot run
+after a crash, forced kill, or power loss, and it cannot preserve a session
+through a long shutdown.
+
 ## Diagnostics
 
 Open **Settings > Devices & services > EnergyKey**, open the integration menu,
