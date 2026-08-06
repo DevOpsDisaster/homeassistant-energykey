@@ -300,6 +300,22 @@ async def test_server_error_body_is_logged_at_debug_and_bounded(caplog) -> None:
     assert body not in caplog.text
 
 
+async def test_server_error_body_with_unknown_charset_still_retries(caplog) -> None:
+    client, request = _request_client(
+        _FakeResponse(500, "useful detail", charset="unknown-charset")
+    )
+
+    with (
+        patch("custom_components.energykey.api.asyncio.sleep", AsyncMock()),
+        caplog.at_level("DEBUG", logger="custom_components.energykey.api"),
+        pytest.raises(EnergyKeyConnectionError),
+    ):
+        await client.async_heartbeat()
+
+    assert request.await_count == 3
+    assert "useful detail" in caplog.text
+
+
 @pytest.mark.parametrize("value", [None, "invalid", "-1", "nan"])
 def test_invalid_retry_after_is_ignored(value: str | None) -> None:
     assert _parse_retry_after(value) is None

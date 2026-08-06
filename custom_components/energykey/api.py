@@ -342,7 +342,7 @@ class EnergyKeyClient:
                     delay,
                 )
                 await asyncio.sleep(delay)
-        raise RuntimeError("EnergyKey retry loop completed unexpectedly")
+        raise AssertionError("EnergyKey retry loop completed unexpectedly")
 
     async def _request_json_once(
         self,
@@ -536,9 +536,12 @@ async def _async_read_error_body(response: Any) -> str:
     """Return a small, safely represented excerpt from an HTTP error body."""
     body = await response.content.read(MAX_ERROR_BODY_LOG_BYTES + 1)
     truncated = len(body) > MAX_ERROR_BODY_LOG_BYTES
-    excerpt = body[:MAX_ERROR_BODY_LOG_BYTES].decode(
-        response.charset or "utf-8", errors="replace"
-    )
+    try:
+        excerpt = body[:MAX_ERROR_BODY_LOG_BYTES].decode(
+            response.charset or "utf-8", errors="replace"
+        )
+    except LookupError:
+        excerpt = body[:MAX_ERROR_BODY_LOG_BYTES].decode("utf-8", errors="replace")
     if not excerpt:
         return "<empty>"
     if truncated:
