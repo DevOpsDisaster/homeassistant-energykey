@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 from urllib.parse import quote
 
 import pytest
@@ -251,6 +251,36 @@ async def test_rate_limit_exposes_bounded_retry_hint() -> None:
         await client.async_heartbeat()
 
     assert raised.value.retry_after == 3600
+
+
+async def test_server_error_is_retried_and_recovers() -> None:
+    client, request = _request_client(_FakeResponse(500))
+    request.side_effect = [
+        _FakeResponse(500),
+        _FakeResponse(200, "true", headers={"Content-Type": "application/json"}),
+    ]
+
+    with patch("custom_components.energykey.api.asyncio.sleep", AsyncMock()) as sleep:
+        await client.async_heartbeat()
+
+    assert request.await_count == 2
+    sleep.assert_awaited_once_with(1.0)
+
+
+async def test_server_error_reports_endpoint_after_retries() -> None:
+    client, request = _request_client(_FakeResponse(500))
+
+    with (
+        patch("custom_components.energykey.api.asyncio.sleep", AsyncMock()) as sleep,
+        pytest.raises(
+            EnergyKeyConnectionError,
+            match=r"HTTP 500 for GET /wts/heartbeat after 3 attempts",
+        ),
+    ):
+        await client.async_heartbeat()
+
+    assert request.await_count == 3
+    assert sleep.await_count == 2
 
 
 @pytest.mark.parametrize("value", [None, "invalid", "-1", "nan"])

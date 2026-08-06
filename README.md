@@ -257,8 +257,9 @@ view, or response schema. Download diagnostics from the integration page; they
 contain counts and timestamps but no values or provider identifiers.
 
 **Entities become unavailable:** check connectivity and Home Assistant logs.
-Temporary failures are retried on the next coordinator refresh; an expired
-session creates a reauthentication repair.
+Network errors, timeouts, and HTTP 5xx responses receive three immediate
+attempts with a short backoff. Persistent failures are retried on the next
+coordinator refresh; an expired session creates a reauthentication repair.
 
 More setup, data, diagnostics, reauth, and ApexCharts scenarios are covered in
 the [troubleshooting guide](docs/troubleshooting.md).

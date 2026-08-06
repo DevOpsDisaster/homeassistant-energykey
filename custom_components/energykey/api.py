@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import math
 import re
 from collections.abc import Mapping
@@ -26,6 +27,8 @@ from .const import (
     MAX_LOGIN_METADATA_DEPTH,
     MAX_RESPONSE_BODY_BYTES,
     MAX_RETRY_AFTER_SECONDS,
+    REQUEST_RETRY_ATTEMPTS,
+    REQUEST_RETRY_BASE_SECONDS,
     REQUEST_TIMEOUT_SECONDS,
     REQUIRED_COOKIES,
     ZOOM_LEVEL_DAY_CANDIDATE,
@@ -44,6 +47,8 @@ _COOKIE_NAME = re.compile(r"^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$")
 _HOST = re.compile(r"^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$")
 _EPOCH_WRAPPER = re.compile(r"^/Date\((?P<value>-?\d+)(?:[+-]\d{4})?\)/$")
 _LOGIN_MARKERS = ("aliaslogintoken", "mitid", "nemlog-in", "login")
+
+_LOGGER = logging.getLogger(__name__)
 
 _CUSTOMER_KEYS = {
     "customerdatabasenumber",
@@ -65,6 +70,10 @@ class EnergyKeyAuthError(EnergyKeyError):
 
 class EnergyKeyConnectionError(EnergyKeyError):
     """EnergyKey could not be reached."""
+
+
+class _EnergyKeyTransientError(EnergyKeyConnectionError):
+    """A request failure which is safe to retry immediately."""
 
 
 class EnergyKeyRateLimitError(EnergyKeyConnectionError):
@@ -310,6 +319,40 @@ class EnergyKeyClient:
         data: Mapping[str, str] | None = None,
     ) -> Any:
         url = URL(self.base_url).join(URL(path))
+        for attempt in range(1, REQUEST_RETRY_ATTEMPTS + 1):
+            try:
+                return await self._request_json_once(
+                    method, url, path, params=params, data=data
+                )
+            except _EnergyKeyTransientError as err:
+                if attempt == REQUEST_RETRY_ATTEMPTS:
+                    raise EnergyKeyConnectionError(
+                        f"{err} after {attempt} attempts"
+                    ) from err
+                delay = REQUEST_RETRY_BASE_SECONDS * 2 ** (attempt - 1)
+                _LOGGER.warning(
+                    "Temporary EnergyKey request failure for %s %s "
+                    "(attempt %d/%d): %s; retrying in %.1f seconds",
+                    method,
+                    path,
+                    attempt,
+                    REQUEST_RETRY_ATTEMPTS,
+                    err,
+                    delay,
+                )
+                await asyncio.sleep(delay)
+        raise RuntimeError("EnergyKey retry loop completed unexpectedly")
+
+    async def _request_json_once(
+        self,
+        method: str,
+        url: URL,
+        path: str,
+        *,
+        params: Mapping[str, str] | None,
+        data: Mapping[str, str] | None,
+    ) -> Any:
+        """Perform one request attempt and classify retryable failures."""
         headers = self._headers()
         try:
             async with self._request_lock, asyncio.timeout(REQUEST_TIMEOUT_SECONDS):
@@ -347,9 +390,15 @@ class EnergyKeyClient:
                         raise EnergyKeyRateLimitError(
                             _parse_retry_after(response.headers.get("Retry-After"))
                         )
+                    if response.status >= 500:
+                        raise _EnergyKeyTransientError(
+                            f"EnergyKey returned HTTP {response.status} "
+                            f"for {method} {path}"
+                        )
                     if response.status >= 400:
                         raise EnergyKeyConnectionError(
-                            f"EnergyKey returned HTTP {response.status}"
+                            f"EnergyKey returned HTTP {response.status} "
+                            f"for {method} {path}"
                         )
 
                     content_type = response.headers.get("Content-Type", "").casefold()
@@ -382,8 +431,9 @@ class EnergyKeyClient:
         except EnergyKeyError:
             raise
         except (TimeoutError, ClientError) as err:
-            raise EnergyKeyConnectionError(
-                "Could not communicate with EnergyKey"
+            raise _EnergyKeyTransientError(
+                f"Could not communicate with EnergyKey for {method} {path} "
+                f"({type(err).__name__})"
             ) from err
 
     def _reject_authentication(self, message: str) -> Never:
