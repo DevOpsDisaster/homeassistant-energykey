@@ -275,6 +275,7 @@ logger:
 
 Remove debug logging after troubleshooting. Before sharing any log, search it
 for cookies, tokens, addresses, customer details, and meter identifiers.
+HTTP 5xx debug entries can include up to 2 KiB of the provider's response body.
 
 ## Development
 

@@ -24,6 +24,7 @@ from .const import (
     MAX_COOKIE_COUNT,
     MAX_COOKIE_HEADER_LENGTH,
     MAX_COOKIE_VALUE_LENGTH,
+    MAX_ERROR_BODY_LOG_BYTES,
     MAX_LOGIN_METADATA_DEPTH,
     MAX_RESPONSE_BODY_BYTES,
     MAX_RETRY_AFTER_SECONDS,
@@ -391,6 +392,14 @@ class EnergyKeyClient:
                             _parse_retry_after(response.headers.get("Retry-After"))
                         )
                     if response.status >= 500:
+                        error_body = await _async_read_error_body(response)
+                        _LOGGER.debug(
+                            "EnergyKey HTTP %d response body for %s %s: %r",
+                            response.status,
+                            method,
+                            path,
+                            error_body,
+                        )
                         raise _EnergyKeyTransientError(
                             f"EnergyKey returned HTTP {response.status} "
                             f"for {method} {path}"
@@ -521,6 +530,20 @@ async def _async_read_response_text(response: Any) -> str:
         raise EnergyKeyProtocolError(
             "EnergyKey returned an undecodable response"
         ) from err
+
+
+async def _async_read_error_body(response: Any) -> str:
+    """Return a small, safely represented excerpt from an HTTP error body."""
+    body = await response.content.read(MAX_ERROR_BODY_LOG_BYTES + 1)
+    truncated = len(body) > MAX_ERROR_BODY_LOG_BYTES
+    excerpt = body[:MAX_ERROR_BODY_LOG_BYTES].decode(
+        response.charset or "utf-8", errors="replace"
+    )
+    if not excerpt:
+        return "<empty>"
+    if truncated:
+        return f"{excerpt}… <truncated>"
+    return excerpt
 
 
 def _parse_retry_after(value: str | None) -> float | None:

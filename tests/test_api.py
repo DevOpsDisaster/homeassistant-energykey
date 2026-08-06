@@ -31,6 +31,7 @@ from custom_components.energykey.const import (
     MAX_COOKIE_COUNT,
     MAX_COOKIE_HEADER_LENGTH,
     MAX_COOKIE_VALUE_LENGTH,
+    MAX_ERROR_BODY_LOG_BYTES,
     MAX_LOGIN_METADATA_DEPTH,
     MAX_RESPONSE_BODY_BYTES,
 )
@@ -281,6 +282,22 @@ async def test_server_error_reports_endpoint_after_retries() -> None:
 
     assert request.await_count == 3
     assert sleep.await_count == 2
+
+
+async def test_server_error_body_is_logged_at_debug_and_bounded(caplog) -> None:
+    body = "useful detail\n" + "x" * MAX_ERROR_BODY_LOG_BYTES
+    client, _ = _request_client(_FakeResponse(500, body))
+
+    with (
+        patch("custom_components.energykey.api.asyncio.sleep", AsyncMock()),
+        caplog.at_level("DEBUG", logger="custom_components.energykey.api"),
+        pytest.raises(EnergyKeyConnectionError),
+    ):
+        await client.async_heartbeat()
+
+    assert "useful detail\\n" in caplog.text
+    assert "<truncated>" in caplog.text
+    assert body not in caplog.text
 
 
 @pytest.mark.parametrize("value", [None, "invalid", "-1", "nan"])
