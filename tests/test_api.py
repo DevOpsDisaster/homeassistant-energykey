@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 from urllib.parse import quote
@@ -15,6 +17,7 @@ from custom_components.energykey.api import (
     EnergyKeyConnectionError,
     EnergyKeyProtocolError,
     EnergyKeyRateLimitError,
+    EnergyKeyStaleResourceError,
     _extract_meter_ids,
     _extract_meters,
     _find_nested_value,
@@ -35,7 +38,11 @@ from custom_components.energykey.const import (
     MAX_LOGIN_METADATA_DEPTH,
     MAX_RESPONSE_BODY_BYTES,
 )
-from custom_components.energykey.models import ConsumptionView, MeterKind
+from custom_components.energykey.models import (
+    ConsumptionView,
+    EnergyKeyMeter,
+    MeterKind,
+)
 
 
 class _FakeContent:
@@ -282,6 +289,55 @@ async def test_server_error_reports_endpoint_after_retries() -> None:
 
     assert request.await_count == 3
     assert sleep.await_count == 2
+
+
+async def test_error_1101_marks_consumption_resource_stale_without_reauth() -> None:
+    client, request = _request_client(
+        _FakeResponse(
+            500,
+            '{"errorCode":1101,"errorMsg":"Could not get item.","metadata":{}}',
+        )
+    )
+    meter = EnergyKeyMeter(item_id="meter", key="meter-key")
+    view = ConsumptionView("view", "usage", "kWh", "kWh", "month_by_days")
+
+    with pytest.raises(EnergyKeyStaleResourceError, match="item or view"):
+        await client.async_get_consumption(
+            meter,
+            view,
+            datetime(2026, 8, 1, tzinfo=UTC),
+            datetime(2026, 8, 2, tzinfo=UTC),
+        )
+
+    assert client.authentication_rejected is False
+    request.assert_awaited_once()
+
+
+async def test_large_error_1101_is_classified_before_log_truncation(caplog) -> None:
+    body = json.dumps(
+        {
+            "errorCode": 1101,
+            "errorMsg": "Could not get item.",
+            "metadata": {"detail": "x" * MAX_ERROR_BODY_LOG_BYTES},
+        }
+    )
+    client, _ = _request_client(_FakeResponse(500, body))
+    meter = EnergyKeyMeter(item_id="meter", key="meter-key")
+    view = ConsumptionView("view", "usage", "kWh", "kWh", "month_by_days")
+
+    with (
+        caplog.at_level("DEBUG", logger="custom_components.energykey.api"),
+        pytest.raises(EnergyKeyStaleResourceError),
+    ):
+        await client.async_get_consumption(
+            meter,
+            view,
+            datetime(2026, 8, 1, tzinfo=UTC),
+            datetime(2026, 8, 2, tzinfo=UTC),
+        )
+
+    assert "<truncated>" in caplog.text
+    assert body not in caplog.text
 
 
 async def test_server_error_body_is_logged_at_debug_and_bounded(caplog) -> None:

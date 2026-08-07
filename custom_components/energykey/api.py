@@ -73,6 +73,10 @@ class EnergyKeyConnectionError(EnergyKeyError):
     """EnergyKey could not be reached."""
 
 
+class EnergyKeyStaleResourceError(EnergyKeyConnectionError):
+    """EnergyKey no longer recognizes a previously discovered item or view."""
+
+
 class _EnergyKeyTransientError(EnergyKeyConnectionError):
     """A request failure which is safe to retry immediately."""
 
@@ -392,14 +396,21 @@ class EnergyKeyClient:
                             _parse_retry_after(response.headers.get("Retry-After"))
                         )
                     if response.status >= 500:
-                        error_body = await _async_read_error_body(response)
+                        error_body, error_excerpt = await _async_read_error_body(
+                            response
+                        )
                         _LOGGER.debug(
                             "EnergyKey HTTP %d response body for %s %s: %r",
                             response.status,
                             method,
                             path,
-                            error_body,
+                            error_excerpt,
                         )
+                        if _is_stale_consumption_resource(path, error_body):
+                            raise EnergyKeyStaleResourceError(
+                                "EnergyKey no longer recognizes a discovered "
+                                "consumption item or view"
+                            )
                         raise _EnergyKeyTransientError(
                             f"EnergyKey returned HTTP {response.status} "
                             f"for {method} {path}"
@@ -486,6 +497,17 @@ def _decode_login_cookie(value: str) -> Any:
         return {}
 
 
+def _is_stale_consumption_resource(path: str, body: str) -> bool:
+    """Recognize EnergyKey's item-not-found response from its data endpoint."""
+    if path != "/wts/consumptionView/data":
+        return False
+    try:
+        payload = json.loads(body)
+    except (TypeError, json.JSONDecodeError):
+        return False
+    return isinstance(payload, dict) and str(payload.get("errorCode")) == "1101"
+
+
 def _find_nested_value(data: Any, keys: set[str], *, _depth: int = 0) -> str | None:
     if _depth >= MAX_LOGIN_METADATA_DEPTH:
         return None
@@ -532,21 +554,28 @@ async def _async_read_response_text(response: Any) -> str:
         ) from err
 
 
-async def _async_read_error_body(response: Any) -> str:
-    """Return a small, safely represented excerpt from an HTTP error body."""
-    body = await response.content.read(MAX_ERROR_BODY_LOG_BYTES + 1)
-    truncated = len(body) > MAX_ERROR_BODY_LOG_BYTES
-    try:
-        excerpt = body[:MAX_ERROR_BODY_LOG_BYTES].decode(
-            response.charset or "utf-8", errors="replace"
+async def _async_read_error_body(response: Any) -> tuple[str, str]:
+    """Return bounded classification text and a small safe logging excerpt."""
+    body = bytearray()
+    while len(body) <= MAX_RESPONSE_BODY_BYTES:
+        chunk = await response.content.read(
+            min(64 * 1024, MAX_RESPONSE_BODY_BYTES + 1 - len(body))
         )
+        if not chunk:
+            break
+        body.extend(chunk)
+    oversized = len(body) > MAX_RESPONSE_BODY_BYTES
+    bounded = bytes(body[:MAX_RESPONSE_BODY_BYTES])
+    try:
+        text = bounded.decode(response.charset or "utf-8", errors="replace")
     except LookupError:
-        excerpt = body[:MAX_ERROR_BODY_LOG_BYTES].decode("utf-8", errors="replace")
+        text = bounded.decode("utf-8", errors="replace")
+    excerpt = text[:MAX_ERROR_BODY_LOG_BYTES]
     if not excerpt:
-        return "<empty>"
-    if truncated:
-        return f"{excerpt}… <truncated>"
-    return excerpt
+        excerpt = "<empty>"
+    if oversized or len(text) > MAX_ERROR_BODY_LOG_BYTES:
+        excerpt = f"{excerpt}… <truncated>"
+    return ("" if oversized else text), excerpt
 
 
 def _parse_retry_after(value: str | None) -> float | None:

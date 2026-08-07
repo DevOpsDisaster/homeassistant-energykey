@@ -22,6 +22,7 @@ from .api import (
     EnergyKeyConnectionError,
     EnergyKeyError,
     EnergyKeyProtocolError,
+    EnergyKeyStaleResourceError,
 )
 from .const import (
     DATA_UPDATE_INTERVAL,
@@ -176,10 +177,16 @@ class EnergyKeyCoordinator(DataUpdateCoordinator[EnergyKeyData]):
 
     async def _async_update_data(self) -> EnergyKeyData:
         """Fetch recent data, repair history, and create immutable snapshots."""
-        results = await asyncio.gather(
-            *(self._async_update_meter(plan) for plan in self._supported),
-            return_exceptions=True,
-        )
+        results = await self._async_fetch_supported_meters()
+        if any(isinstance(result, EnergyKeyStaleResourceError) for result in results):
+            _LOGGER.info(
+                "EnergyKey no longer recognizes a cached item or view; "
+                "rediscovering account resources before retrying"
+            )
+            previous_plans = self._supported
+            await self._async_setup()
+            self._supported = _preserve_meter_keys(previous_plans, self._supported)
+            results = await self._async_fetch_supported_meters()
         snapshots: list[MeterSnapshot] = []
         unsupported_keys: set[str] = set()
         for plan, result in zip(self._supported, results, strict=True):
@@ -234,6 +241,15 @@ class EnergyKeyCoordinator(DataUpdateCoordinator[EnergyKeyData]):
         await self.store.async_set_cookies(self.client.cookie_state)
         self.last_successful_refresh = datetime.now(UTC)
         return data
+
+    async def _async_fetch_supported_meters(
+        self,
+    ) -> list[MeterSnapshot | BaseException]:
+        """Fetch every supported meter while retaining per-meter failures."""
+        return await asyncio.gather(
+            *(self._async_update_meter(plan) for plan in self._supported),
+            return_exceptions=True,
+        )
 
     async def _async_fetch_view_results(
         self,
@@ -743,6 +759,62 @@ def _assign_device_names(snapshots: list[MeterSnapshot]) -> list[MeterSnapshot]:
             label = f"{label} {seen[snapshot.kind]}"
         result.append(replace(snapshot, device_name=label))
     return result
+
+
+def _preserve_meter_keys(
+    previous: list[_MeterPlan], discovered: list[_MeterPlan]
+) -> list[_MeterPlan]:
+    """Keep registry and history identity across refreshed request IDs."""
+    unmatched = list(previous)
+    result: list[_MeterPlan] = []
+    for plan in discovered:
+        match = _find_stable_meter_match(plan, unmatched, discovered)
+        if match is None:
+            result.append(plan)
+            continue
+        unmatched.remove(match)
+        result.append(replace(plan, meter=replace(plan.meter, key=match.meter.key)))
+    return result
+
+
+def _find_stable_meter_match(
+    current: _MeterPlan,
+    previous: list[_MeterPlan],
+    discovered: list[_MeterPlan],
+) -> _MeterPlan | None:
+    """Match a rediscovered meter only when stable metadata is unambiguous."""
+    for attribute in ("meter_number", "portal_name"):
+        value = getattr(current.meter, attribute)
+        if not value:
+            continue
+        previous_matches = [
+            candidate
+            for candidate in previous
+            if candidate.meter.kind_hint is current.meter.kind_hint
+            and getattr(candidate.meter, attribute) == value
+        ]
+        discovered_matches = [
+            candidate
+            for candidate in discovered
+            if candidate.meter.kind_hint is current.meter.kind_hint
+            and getattr(candidate.meter, attribute) == value
+        ]
+        if len(previous_matches) == len(discovered_matches) == 1:
+            return previous_matches[0]
+
+    previous_kind = [
+        candidate
+        for candidate in previous
+        if candidate.meter.kind_hint is current.meter.kind_hint
+    ]
+    discovered_kind = [
+        candidate
+        for candidate in discovered
+        if candidate.meter.kind_hint is current.meter.kind_hint
+    ]
+    if len(previous_kind) == len(discovered_kind) == 1:
+        return previous_kind[0]
+    return None
 
 
 def _home_assistant_timezone(name: str) -> ZoneInfo:
