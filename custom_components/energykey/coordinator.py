@@ -181,9 +181,16 @@ class EnergyKeyCoordinator(DataUpdateCoordinator[EnergyKeyData]):
         if any(isinstance(result, EnergyKeyStaleResourceError) for result in results):
             _LOGGER.info(
                 "EnergyKey no longer recognizes a cached item or view; "
-                "rediscovering account resources before retrying"
+                "renewing the token session and rediscovering account resources"
             )
             previous_plans = self._supported
+            try:
+                await self.client.async_recover_token_session()
+            except EnergyKeyAuthError as err:
+                raise ConfigEntryAuthFailed(
+                    "The EnergyKey token session could not be renewed"
+                ) from err
+            await self.store.async_set_cookies(self.client.cookie_state)
             await self._async_setup()
             self._supported = _preserve_meter_keys(previous_plans, self._supported)
             results = await self._async_fetch_supported_meters()
