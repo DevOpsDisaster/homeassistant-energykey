@@ -215,6 +215,9 @@ only an opaque SHA-256-derived meter key.
   revise the corresponding long-term statistics.
 - The 15-minute heartbeat is designed around an observed 20–25-minute idle
   timeout. A brief network failure is retried after one minute.
+- A graceful Home Assistant shutdown sends one final best-effort heartbeat with
+  a five-second deadline, which can help preserve the session across a short
+  restart.
 - Home Assistant cannot send heartbeats while stopped. A long shutdown may
   require fresh cookies after restart.
 - Heartbeats cannot override an absolute server-side expiry, a logout, a
@@ -257,8 +260,9 @@ view, or response schema. Download diagnostics from the integration page; they
 contain counts and timestamps but no values or provider identifiers.
 
 **Entities become unavailable:** check connectivity and Home Assistant logs.
-Temporary failures are retried on the next coordinator refresh; an expired
-session creates a reauthentication repair.
+Network errors, timeouts, and HTTP 5xx responses receive three immediate
+attempts with a short backoff. Persistent failures are retried on the next
+coordinator refresh; an expired session creates a reauthentication repair.
 
 More setup, data, diagnostics, reauth, and ApexCharts scenarios are covered in
 the [troubleshooting guide](docs/troubleshooting.md).
@@ -274,6 +278,7 @@ logger:
 
 Remove debug logging after troubleshooting. Before sharing any log, search it
 for cookies, tokens, addresses, customer details, and meter identifiers.
+HTTP 5xx debug entries can include up to 2 KiB of the provider's response body.
 
 ## Development
 

@@ -21,9 +21,23 @@ mark entities unavailable. A definitive 401, 403, false heartbeat, or login
 redirect stops further session requests and creates a Home Assistant reauth
 repair.
 
+Network errors, timeouts, and HTTP 5xx responses are retried up to three times
+with a short exponential delay. If all attempts fail, the coordinator keeps the
+last valid data and retries at its next scheduled refresh. Normal logs identify
+the HTTP method, endpoint, status, and attempt number. Debug logs also include
+up to 2 KiB of an HTTP 5xx response body, with control characters escaped and a
+truncation marker when needed. Query parameters, request bodies, and cookies
+are never logged. Treat debug response excerpts as potentially sensitive and
+inspect them before sharing.
+
 Initial meter discovery should complete quickly. Historical loading continues
 in the background and can take longer. Failed old month chunks are retried on
 later daily refreshes.
+
+During a graceful Home Assistant shutdown, EnergyKey sends one final heartbeat
+with a five-second deadline and persists any rotated cookies. This cannot run
+after a crash, forced kill, or power loss, and it cannot preserve a session
+through a long shutdown.
 
 ## Diagnostics
 
