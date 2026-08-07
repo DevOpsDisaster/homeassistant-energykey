@@ -73,6 +73,10 @@ class EnergyKeyConnectionError(EnergyKeyError):
     """EnergyKey could not be reached."""
 
 
+class EnergyKeyStaleResourceError(EnergyKeyConnectionError):
+    """EnergyKey no longer recognizes a previously discovered item or view."""
+
+
 class _EnergyKeyTransientError(EnergyKeyConnectionError):
     """A request failure which is safe to retry immediately."""
 
@@ -400,6 +404,11 @@ class EnergyKeyClient:
                             path,
                             error_body,
                         )
+                        if _is_stale_consumption_resource(path, error_body):
+                            raise EnergyKeyStaleResourceError(
+                                "EnergyKey no longer recognizes a discovered "
+                                "consumption item or view"
+                            )
                         raise _EnergyKeyTransientError(
                             f"EnergyKey returned HTTP {response.status} "
                             f"for {method} {path}"
@@ -484,6 +493,17 @@ def _decode_login_cookie(value: str) -> Any:
         return json.loads(candidate)
     except (TypeError, json.JSONDecodeError):
         return {}
+
+
+def _is_stale_consumption_resource(path: str, body: str) -> bool:
+    """Recognize EnergyKey's item-not-found response from its data endpoint."""
+    if path != "/wts/consumptionView/data":
+        return False
+    try:
+        payload = json.loads(body)
+    except (TypeError, json.JSONDecodeError):
+        return False
+    return isinstance(payload, dict) and str(payload.get("errorCode")) == "1101"
 
 
 def _find_nested_value(data: Any, keys: set[str], *, _depth: int = 0) -> str | None:

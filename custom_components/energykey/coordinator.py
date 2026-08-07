@@ -22,6 +22,7 @@ from .api import (
     EnergyKeyConnectionError,
     EnergyKeyError,
     EnergyKeyProtocolError,
+    EnergyKeyStaleResourceError,
 )
 from .const import (
     DATA_UPDATE_INTERVAL,
@@ -176,10 +177,14 @@ class EnergyKeyCoordinator(DataUpdateCoordinator[EnergyKeyData]):
 
     async def _async_update_data(self) -> EnergyKeyData:
         """Fetch recent data, repair history, and create immutable snapshots."""
-        results = await asyncio.gather(
-            *(self._async_update_meter(plan) for plan in self._supported),
-            return_exceptions=True,
-        )
+        results = await self._async_fetch_supported_meters()
+        if any(isinstance(result, EnergyKeyStaleResourceError) for result in results):
+            _LOGGER.info(
+                "EnergyKey no longer recognizes a cached item or view; "
+                "rediscovering account resources before retrying"
+            )
+            await self._async_setup()
+            results = await self._async_fetch_supported_meters()
         snapshots: list[MeterSnapshot] = []
         unsupported_keys: set[str] = set()
         for plan, result in zip(self._supported, results, strict=True):
@@ -234,6 +239,15 @@ class EnergyKeyCoordinator(DataUpdateCoordinator[EnergyKeyData]):
         await self.store.async_set_cookies(self.client.cookie_state)
         self.last_successful_refresh = datetime.now(UTC)
         return data
+
+    async def _async_fetch_supported_meters(
+        self,
+    ) -> list[MeterSnapshot | BaseException]:
+        """Fetch every supported meter while retaining per-meter failures."""
+        return await asyncio.gather(
+            *(self._async_update_meter(plan) for plan in self._supported),
+            return_exceptions=True,
+        )
 
     async def _async_fetch_view_results(
         self,
