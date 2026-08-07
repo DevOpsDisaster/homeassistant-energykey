@@ -108,7 +108,7 @@ class FakeEnergyKeyClient:
         self.authentication_rejected = False
         self.consumption_started = asyncio.Event()
         self.consumption_gate: asyncio.Event | None = None
-        self.fail_with_stale_resource_once = False
+        self.rediscover_changed_item_id = False
         self.discovery_count = 0
 
     @property
@@ -125,22 +125,32 @@ class FakeEnergyKeyClient:
     async def async_get_meters(self) -> list[EnergyKeyMeter]:
         self.discovery_count += 1
         self.request_order.append("meters")
+        if self.rediscover_changed_item_id and self.discovery_count > 1:
+            return [
+                EnergyKeyMeter(
+                    "refreshed-water-id",
+                    "3" * 64,
+                    self.water_meter.portal_name,
+                    self.water_meter.meter_number,
+                    self.water_meter.kind_hint,
+                ),
+                self.heat_meter,
+            ]
         return [self.water_meter, self.heat_meter]
 
     async def async_get_views(self, meter: EnergyKeyMeter) -> list[ConsumptionView]:
-        if meter == self.water_meter:
+        if meter.kind_hint is MeterKind.WATER:
             return [self.water_view]
         return [self.heat_view, self.heat_volume_view, self.heat_temperature_view]
 
     async def async_get_consumption(self, meter, view, start, end):
         self.request_order.append("consumption")
         self.consumption_started.set()
-        if self.fail_with_stale_resource_once:
-            self.fail_with_stale_resource_once = False
+        if self.rediscover_changed_item_id and meter.item_id == "raw-water-id":
             raise EnergyKeyStaleResourceError("stale item")
         if self.consumption_gate is not None:
             await self.consumption_gate.wait()
-        if meter == self.water_meter:
+        if meter.kind_hint is MeterKind.WATER:
             return self.water_result
         if view == self.heat_volume_view:
             return self.heat_volume_result
@@ -203,7 +213,7 @@ async def test_stale_item_is_rediscovered_and_retried(hass, load_fixture) -> Non
     )
     entry.add_to_hass(hass)
     client = FakeEnergyKeyClient(load_fixture)
-    client.fail_with_stale_resource_once = True
+    client.rediscover_changed_item_id = True
 
     with patch("custom_components.energykey.EnergyKeyClient", return_value=client):
         assert await hass.config_entries.async_setup(entry.entry_id)
@@ -212,6 +222,8 @@ async def test_stale_item_is_rediscovered_and_retried(hass, load_fixture) -> Non
     await hass.async_block_till_done()
 
     assert client.discovery_count == 2
+    assert entry.runtime_data.coordinator.data.meter("1" * 64) is not None
+    assert entry.runtime_data.coordinator.data.meter("3" * 64) is None
     assert entry.runtime_data.coordinator.last_update_success is True
     assert entry.runtime_data.coordinator.last_successful_refresh is not None
 
