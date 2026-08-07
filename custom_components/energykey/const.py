@@ -15,7 +15,9 @@ ENERGYKEY_HOST_SUFFIX: Final = ".wt.energykey.dk"
 HEARTBEAT_INTERVAL: Final = timedelta(minutes=15)
 HEARTBEAT_RETRY_INTERVAL: Final = timedelta(minutes=1)
 SHUTDOWN_HEARTBEAT_TIMEOUT_SECONDS: Final = 5
-DATA_UPDATE_INTERVAL: Final = timedelta(hours=6)
+# Keep the consumption resource active between refreshes. EnergyKey can keep
+# accepting heartbeat requests after its consumption context has gone stale.
+DATA_UPDATE_INTERVAL: Final = timedelta(hours=1)
 RECENT_HISTORY_DAYS: Final = 45
 HISTORY_MONTHS: Final = 13
 REQUEST_TIMEOUT_SECONDS: Final = 30

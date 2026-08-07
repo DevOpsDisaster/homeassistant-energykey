@@ -20,6 +20,7 @@ from custom_components.energykey.const import (
     CONF_ACCOUNT_ID,
     CONF_BASE_URL,
     CONF_COOKIES,
+    DATA_UPDATE_INTERVAL,
     DOMAIN,
 )
 from custom_components.energykey.diagnostics import (
@@ -100,13 +101,9 @@ class FakeEnergyKeyClient:
             load_fixture("heat_temperature.json"), self.heat_temperature_view
         )
         self.async_heartbeat = AsyncMock()
-        self.async_recover_token_session = AsyncMock()
         self.request_order: list[str] = []
         self.async_heartbeat.side_effect = lambda: self.request_order.append(
             "heartbeat"
-        )
-        self.async_recover_token_session.side_effect = lambda: (
-            self.request_order.append("recover-token-session")
         )
         self.detach_called = False
         self.authentication_rejected = False
@@ -202,6 +199,7 @@ async def test_startup_heartbeat_precedes_discovery_and_data_fetch(
     )
     client.async_heartbeat.assert_awaited_once()
     assert entry.runtime_data.last_successful_heartbeat is not None
+    assert entry.runtime_data.coordinator.update_interval == DATA_UPDATE_INTERVAL
 
 
 async def test_stale_item_is_rediscovered_and_retried(hass, load_fixture) -> None:
@@ -226,11 +224,6 @@ async def test_stale_item_is_rediscovered_and_retried(hass, load_fixture) -> Non
     await hass.async_block_till_done()
 
     assert client.discovery_count == 2
-    client.async_recover_token_session.assert_awaited_once()
-    assert (
-        client.request_order.index("recover-token-session")
-        < len(client.request_order) - client.request_order[::-1].index("meters") - 1
-    )
     assert entry.runtime_data.coordinator.data.meter("1" * 64) is not None
     assert entry.runtime_data.coordinator.data.meter("3" * 64) is None
     assert entry.runtime_data.coordinator.last_update_success is True

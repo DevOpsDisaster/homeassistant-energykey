@@ -6,7 +6,7 @@ import json
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
-from urllib.parse import quote, unquote
+from urllib.parse import quote
 
 import pytest
 from aiohttp import CookieJar
@@ -250,57 +250,6 @@ async def test_successful_json_response_records_authenticated_activity() -> None
 
     assert client.seconds_since_activity < 1
     request.assert_awaited_once()
-
-
-async def test_token_session_recovery_rotates_and_preserves_login_cookies() -> None:
-    token = "sensitive-portal-token"
-    login = quote(
-        json.dumps(
-            {
-                "id": "synthetic-user",
-                "languageId": "da-DK",
-                "token": token,
-            }
-        )
-    )
-    response = _FakeResponse(
-        200,
-        json.dumps(
-            {
-                "id": "synthetic-user",
-                "languageId": "da-DK",
-                "sessionId": "renewed-session",
-            }
-        ),
-        headers={"Content-Type": "application/json"},
-    )
-    request = AsyncMock(return_value=response)
-    session = SimpleNamespace(cookie_jar=CookieJar(), request=request)
-    client = EnergyKeyClient(
-        session,
-        "https://tenant.wt.energykey.dk",
-        {"wt3SessionId": "expired-session", "wt3login": login},
-    )
-
-    await client.async_recover_token_session()
-
-    assert client.cookie_state["wt3SessionId"] == "renewed-session"
-    renewed_login = json.loads(unquote(client.cookie_state["wt3login"]))
-    assert renewed_login["token"] == token
-    assert renewed_login["sessionId"] == "renewed-session"
-    assert request.await_args.kwargs["data"] == {"token": token}
-
-
-async def test_token_session_recovery_requires_a_reusable_token() -> None:
-    client, request = _request_client(
-        _FakeResponse(200, "{}", headers={"Content-Type": "application/json"})
-    )
-
-    with pytest.raises(EnergyKeyAuthError, match="cannot be renewed"):
-        await client.async_recover_token_session()
-
-    assert client.authentication_rejected is True
-    request.assert_not_awaited()
 
 
 async def test_rate_limit_exposes_bounded_retry_hint() -> None:

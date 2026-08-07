@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from time import monotonic
 from typing import Any, Never
-from urllib.parse import quote, unquote, urlsplit
+from urllib.parse import unquote, urlsplit
 
 from aiohttp import ClientError, ClientSession
 from yarl import URL
@@ -275,52 +275,6 @@ class EnergyKeyClient:
         result = await self._request_json("GET", "/wts/heartbeat")
         if result is not True:
             self._reject_authentication("EnergyKey rejected the current session")
-
-    async def async_recover_token_session(self) -> None:
-        """Exchange the portal token for a fresh WebTools session."""
-        current_cookies = self.cookie_state
-        login_data = _decode_login_cookie(current_cookies.get("wt3login", ""))
-        token = login_data.get("token") if isinstance(login_data, dict) else None
-        if not isinstance(token, str) or not token:
-            self._reject_authentication(
-                "The EnergyKey token session cannot be renewed automatically"
-            )
-
-        result = await self._request_json(
-            "POST", "/wts/loginToken", data={"token": token}
-        )
-        if not isinstance(result, dict):
-            self._reject_authentication(
-                "EnergyKey returned an invalid token-login response"
-            )
-        session_id = result.get("sessionId")
-        if not isinstance(session_id, str) or not session_id:
-            self._reject_authentication("EnergyKey did not return a renewed session")
-
-        renewed_login = dict(result)
-        renewed_login["token"] = token
-        encoded_login = quote(
-            json.dumps(renewed_login, ensure_ascii=False, separators=(",", ":")),
-            safe="",
-        )
-        renewed_cookies = {
-            **current_cookies,
-            "wt3SessionId": session_id,
-            "wt3login": encoded_login,
-        }
-        renewed_metadata = session_metadata(renewed_cookies)
-        if renewed_metadata.account_identifier != self._metadata.account_identifier:
-            self._reject_authentication(
-                "EnergyKey renewed the session for a different account"
-            )
-        self._session.cookie_jar.update_cookies(
-            {
-                "wt3SessionId": session_id,
-                "wt3login": encoded_login,
-            },
-            URL(self.base_url),
-        )
-        self._metadata = renewed_metadata
 
     async def async_get_meters(self) -> list[EnergyKeyMeter]:
         """Discover every EnergyKey meter in the account."""
