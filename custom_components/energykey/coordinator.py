@@ -22,9 +22,12 @@ from .api import (
     EnergyKeyConnectionError,
     EnergyKeyError,
     EnergyKeyProtocolError,
+    EnergyKeyRateLimitError,
     EnergyKeyStaleResourceError,
 )
 from .const import (
+    CONSUMPTION_KEEPALIVE_INTERVAL,
+    CONSUMPTION_KEEPALIVE_LOOKBACK_DAYS,
     DATA_UPDATE_INTERVAL,
     HISTORY_MONTHS,
     MAX_HISTORY_REQUESTS,
@@ -108,6 +111,7 @@ class EnergyKeyCoordinator(DataUpdateCoordinator[EnergyKeyData]):
         self.store = store
         self._supported: list[_MeterPlan] = []
         self._history_semaphore = asyncio.Semaphore(MAX_HISTORY_REQUESTS)
+        self._data_operation_lock = asyncio.Lock()
         self.unsupported_meter_count = 0
         self.history_error_count = 0
         self.last_successful_refresh: datetime | None = None
@@ -177,6 +181,11 @@ class EnergyKeyCoordinator(DataUpdateCoordinator[EnergyKeyData]):
 
     async def _async_update_data(self) -> EnergyKeyData:
         """Fetch recent data, repair history, and create immutable snapshots."""
+        async with self._data_operation_lock:
+            return await self._async_update_data_locked()
+
+    async def _async_update_data_locked(self) -> EnergyKeyData:
+        """Update all data while holding the coordinator operation lock."""
         results = await self._async_fetch_supported_meters()
         if any(isinstance(result, EnergyKeyStaleResourceError) for result in results):
             _LOGGER.info(
@@ -250,6 +259,105 @@ class EnergyKeyCoordinator(DataUpdateCoordinator[EnergyKeyData]):
             *(self._async_update_meter(plan) for plan in self._supported),
             return_exceptions=True,
         )
+
+    def seconds_until_consumption_keepalive(self) -> float:
+        """Return the delay before any discovered meter needs a data probe."""
+        interval = CONSUMPTION_KEEPALIVE_INTERVAL.total_seconds()
+        if not self._supported:
+            return interval
+        oldest_activity = max(
+            self.client.seconds_since_consumption(plan.meter)
+            for plan in self._supported
+        )
+        return max(0.0, interval - oldest_activity)
+
+    async def async_run_consumption_keepalive(self) -> int:
+        """Probe due primary views and refresh when complete data has changed."""
+        successful_probes = 0
+        change_candidates: list[tuple[str, ConsumptionResult]] = []
+        first_error: EnergyKeyError | None = None
+        terminal_error: EnergyKeyError | None = None
+        attempted_probe = False
+
+        async with self._data_operation_lock:
+            timezone = _home_assistant_timezone(self.hass.config.time_zone)
+            local_today = datetime.now(timezone).date()
+            start = _local_midnight(
+                local_today - timedelta(days=CONSUMPTION_KEEPALIVE_LOOKBACK_DAYS),
+                timezone,
+            )
+            end = _local_midnight(local_today + timedelta(days=1), timezone)
+            interval = CONSUMPTION_KEEPALIVE_INTERVAL.total_seconds()
+
+            for plan in self._supported:
+                if self.client.seconds_since_consumption(plan.meter) < interval:
+                    continue
+                attempted_probe = True
+                try:
+                    result = await self.client.async_get_consumption(
+                        plan.meter,
+                        plan.consumption_view,
+                        start,
+                        end,
+                        request_attempts=1,
+                    )
+                except (
+                    EnergyKeyAuthError,
+                    EnergyKeyRateLimitError,
+                    EnergyKeyStaleResourceError,
+                ) as err:
+                    terminal_error = err
+                    break
+                except (EnergyKeyConnectionError, EnergyKeyProtocolError) as err:
+                    if first_error is None:
+                        first_error = err
+                    continue
+
+                successful_probes += 1
+                if _has_complete_primary_changes(self.store, plan.meter.key, result):
+                    change_candidates.append((plan.meter.key, result))
+
+            if attempted_probe:
+                cookie_state = self.client.cookie_state
+                if cookie_state != self.store.cookies:
+                    await self.store.async_set_cookies(cookie_state)
+
+        if successful_probes:
+            _LOGGER.debug(
+                "EnergyKey consumption keepalive completed for %d meter(s)",
+                successful_probes,
+            )
+        if terminal_error is not None:
+            raise terminal_error
+        if change_candidates:
+            # A scheduled refresh may have waited for the probes. Let it finish,
+            # then avoid a redundant refresh if it already persisted these points.
+            async with self._data_operation_lock:
+                changed = any(
+                    _has_complete_primary_changes(self.store, meter_key, result)
+                    for meter_key, result in change_candidates
+                )
+        else:
+            changed = False
+        if changed:
+            _LOGGER.debug(
+                "EnergyKey consumption keepalive detected new or revised "
+                "complete data; refreshing all views"
+            )
+            # Do not refresh while holding _data_operation_lock: the normal
+            # coordinator refresh acquires that same lock in _async_update_data.
+            await self.async_refresh()
+            if not self.last_update_success:
+                if isinstance(self.last_exception, ConfigEntryAuthFailed):
+                    raise EnergyKeyAuthError(
+                        "The EnergyKey session expired while refreshing new data"
+                    ) from self.last_exception
+                raise EnergyKeyConnectionError(
+                    "Could not refresh newly completed EnergyKey data"
+                ) from self.last_exception
+        if first_error is not None:
+            raise first_error
+        return successful_probes
 
     async def _async_fetch_view_results(
         self,
@@ -672,6 +780,36 @@ def _series_for_metric(
     if metric_kind is MetricKind.RETURN_TEMPERATURE:
         return result.matching_series("returnVolumeTemp")
     return None
+
+
+def _has_complete_primary_changes(
+    store: EnergyKeyStore, meter_key: str, result: ConsumptionResult
+) -> bool:
+    """Return whether a primary response contains changed complete periods."""
+    for metric_kind in (
+        MetricKind.ACTUAL_CONSUMPTION,
+        MetricKind.EXPECTED_CONSUMPTION,
+    ):
+        series = _series_for_metric(result, metric_kind)
+        if series is None:
+            continue
+        stored_by_period = {
+            (point.start, point.end): point
+            for point in store.history(_history_key(meter_key, metric_kind))
+        }
+        for point in series.points:
+            if not point.complete:
+                continue
+            previous = stored_by_period.get((point.start, point.end))
+            if previous is None or (
+                previous.value,
+                previous.complete,
+            ) != (
+                point.value,
+                point.complete,
+            ):
+                return True
+    return False
 
 
 def _merge_history(

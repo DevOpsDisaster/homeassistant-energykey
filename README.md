@@ -36,8 +36,11 @@ Home Assistant device serial number. Every supported water or heat meter exposes
 - **Expected daily consumption** — EnergyKey's budget/expected value for the
   latest completed daily period, when the portal provides the stable
   `usageBudget` series.
-- **Last successful heartbeat** — the latest successful session keepalive
-  timestamp. This config-entry diagnostic entity is disabled by default.
+- **Last successful session renewal** — the latest successful session-renewal
+  probe timestamp. It covers the startup heartbeat and successful scheduled
+  consumption-keepalive passes. The underlying `last_successful_heartbeat` key
+  remains unchanged for registry compatibility. This config-entry diagnostic
+  entity is disabled by default.
 
 Compatible district-heating meters additionally expose:
 
@@ -67,22 +70,36 @@ EnergyKey does not expose a supported authentication API for this use case.
 You therefore sign in normally in a browser and copy the browser's `Cookie`
 request header into Home Assistant. Home Assistant stores the bootstrap
 cookies locally, maintains its own private HTTP session, sends an EnergyKey
-heartbeat immediately when the integration starts, and then sends another when
-the session has been inactive for 15 minutes.
+heartbeat immediately when the integration starts, and then performs a
+lightweight primary-consumption request for each meter after 20 minutes without
+a successful consumption request for that meter. Each keepalive request uses a
+seven-day lookback through the current day.
+
+The consumption context maintained by EnergyKey is scoped to each meter item.
+A generic heartbeat, meter discovery, or a consumption request for another
+meter does not renew it, so every meter needs its own consumption keepalive.
+The keepalive response also acts as a change detector. A new or revised
+complete primary-consumption or expected-consumption point triggers a normal
+coordinator refresh; an unchanged response does not.
 
 A definitive authentication rejection, including HTTP 401 or 403, latches the
-client as rejected, stops the heartbeat loop, and starts one reauthentication
-flow. Further polling attempts fail locally without contacting EnergyKey until
-fresh cookies have been validated and the config entry has reloaded.
+client as rejected, stops the session-renewal loop, and starts one
+reauthentication flow. Further requests then fail locally without contacting
+EnergyKey until fresh cookies have been validated and the config entry has
+reloaded. A stale item-scoped consumption context, reported by EnergyKey as
+error `1101`, also stops the keepalive loop and starts reauthentication because
+rediscovery cannot restore that context.
 
 Setup waits only for meter and view discovery so Home Assistant can create the
 meter devices promptly. The first current and historical data refresh starts
 as config-entry-bound background work after setup returns; verified sensor
 entities are added as their series and scaled units become available. The
 first refresh asks for 13 calendar months in bounded monthly requests. Later
-refreshes run every 6 hours and re-fetch the newest 45 days so delayed or
-corrected supplier readings replace older values. Failed older chunks are
-retried on later refreshes.
+full reconciliations run every 6 hours and re-fetch the newest 45 days so
+delayed or corrected supplier readings replace older values. The lightweight
+20-minute change detector may start the same normal refresh sooner when a
+complete primary point changes. Failed older chunks are retried on later full
+refreshes.
 
 Complete actual water consumption, actual heat consumption, and heat volume
 are imported into Home Assistant as external long-term statistics. The first
@@ -149,11 +166,12 @@ redirects outside the configured origin.
 
 ## Reauthentication
 
-EnergyKey sessions can expire even while they are kept active. When EnergyKey
-definitively rejects the session, Home Assistant displays a repair and asks
-for a fresh Cookie header. Sign in again, repeat the Chrome steps, and paste
-cookies from the same EnergyKey account. Successful reauthentication updates
-the existing config entry and preserves its device and entity identities.
+EnergyKey's cookie session and item-scoped consumption contexts can expire
+independently. When EnergyKey definitively rejects the session or reports a
+stale consumption context, Home Assistant displays a repair and asks for a
+fresh Cookie header. Sign in again, repeat the Chrome steps, and paste cookies
+from the same EnergyKey account. Successful reauthentication updates the
+existing config entry and preserves its device and entity identities.
 
 Cookies from another account are rejected. To switch accounts, remove the
 integration entry and create a new one.
@@ -210,18 +228,24 @@ only an opaque SHA-256-derived meter key.
 
 ## Data delay and session limitations
 
-- Utility readings can arrive several days late. Daily refreshes revisit 45
-  days of every discovered series to pick up late and corrected values and to
-  revise the corresponding long-term statistics.
-- The 15-minute heartbeat is designed around an observed 20–25-minute idle
-  timeout. A brief network failure is retried after one minute.
+- Utility readings can arrive several days late. Full reconciliations every 6
+  hours revisit 45 days of every discovered series to pick up late and
+  corrected values and revise the corresponding long-term statistics.
+- After 20 minutes without consumption activity for a meter, one lightweight
+  request checks its primary view using a seven-day lookback through the current
+  day. This both renews that meter's item-scoped context and detects new or
+  revised complete points. A detected change starts a normal refresh; otherwise
+  no sensor or statistics update is performed. A brief network failure is
+  retried after one minute.
+- The item-scoped context cannot be kept active by the generic heartbeat or by
+  requests for another meter. A stale-context response starts reauthentication.
 - A graceful Home Assistant shutdown sends one final best-effort heartbeat with
-  a five-second deadline, which can help preserve the session across a short
-  restart.
-- Home Assistant cannot send heartbeats while stopped. A long shutdown may
+  a five-second deadline, which can help preserve the cookie session across a
+  short restart. It does not replace the per-meter consumption keepalives.
+- Home Assistant cannot send keepalives while stopped. A long shutdown may
   require fresh cookies after restart.
-- Heartbeats cannot override an absolute server-side expiry, a logout, a
-  password or identity change, or the utility revoking the session.
+- Session-renewal requests cannot override an absolute server-side expiry, a
+  logout, an identity change, or the utility revoking the session.
 - If a refresh temporarily fails, the last valid values remain in coordinator
   memory while the entities are marked unavailable.
 
@@ -260,9 +284,11 @@ view, or response schema. Download diagnostics from the integration page; they
 contain counts and timestamps but no values or provider identifiers.
 
 **Entities become unavailable:** check connectivity and Home Assistant logs.
-Network errors, timeouts, and HTTP 5xx responses receive three immediate
-attempts with a short backoff. Persistent failures are retried on the next
-coordinator refresh; an expired session creates a reauthentication repair.
+Normal refresh requests retry network errors, timeouts, and ordinary HTTP 5xx
+responses with a short backoff. The lightweight consumption keepalive uses one
+attempt and retries transient failures after one minute. An expired cookie
+session or stale item-scoped consumption context creates a reauthentication
+repair.
 
 More setup, data, diagnostics, reauth, and ApexCharts scenarios are covered in
 the [troubleshooting guide](docs/troubleshooting.md).
@@ -327,8 +353,9 @@ be performed locally with real cookies that are never committed: compare every
 meter, unit, actual and expected value, heat volume, temperature, completed
 period, and timestamp with the portal. Also verify the external
 statistics across the available historical window; leave the session active
-beyond 25 minutes; restart Home Assistant; then invalidate and reauthenticate
-the session.
+beyond 20 minutes and verify the per-meter consumption keepalives; verify the
+six-hour reconciliation; restart Home Assistant; then invalidate and
+reauthenticate the session.
 
 Development uses Gitflow with `main`, `develop`, feature branches, and release
 branches. Beta and release-candidate tags create GitHub prereleases only. See

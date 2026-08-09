@@ -111,6 +111,7 @@ class FakeEnergyKeyClient:
         self.consumption_gate: asyncio.Event | None = None
         self.rediscover_changed_item_id = False
         self.discovery_count = 0
+        self.consumption_activity: set[str] = set()
 
     @property
     def cookie_state(self) -> dict[str, str]:
@@ -119,9 +120,9 @@ class FakeEnergyKeyClient:
             "wt3login": "rotated-login",
         }
 
-    @property
-    def seconds_since_activity(self) -> float:
-        return 0
+    def seconds_since_consumption(self, meter: EnergyKeyMeter) -> float:
+        """Return a fresh per-meter activity age after a successful fixture call."""
+        return 0 if meter.key in self.consumption_activity else float("inf")
 
     async def async_get_meters(self) -> list[EnergyKeyMeter]:
         self.discovery_count += 1
@@ -144,13 +145,16 @@ class FakeEnergyKeyClient:
             return [self.water_view]
         return [self.heat_view, self.heat_volume_view, self.heat_temperature_view]
 
-    async def async_get_consumption(self, meter, view, start, end):
+    async def async_get_consumption(
+        self, meter, view, start, end, *, request_attempts=None
+    ):
         self.request_order.append("consumption")
         self.consumption_started.set()
         if self.rediscover_changed_item_id and meter.item_id == "raw-water-id":
             raise EnergyKeyStaleResourceError("stale item")
         if self.consumption_gate is not None:
             await self.consumption_gate.wait()
+        self.consumption_activity.add(meter.key)
         if meter.kind_hint is MeterKind.WATER:
             return self.water_result
         if view == self.heat_volume_view:

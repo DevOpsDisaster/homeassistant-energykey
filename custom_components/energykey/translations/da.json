@@ -53,7 +53,7 @@
         "name": "Seneste returløbstemperatur"
       },
       "last_successful_heartbeat": {
-        "name": "Seneste vellykkede heartbeat"
+        "name": "Seneste vellykkede sessionsfornyelse"
       }
     }
   }

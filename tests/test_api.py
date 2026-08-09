@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -10,6 +11,7 @@ from urllib.parse import quote
 
 import pytest
 from aiohttp import CookieJar
+from yarl import URL
 
 from custom_components.energykey.api import (
     EnergyKeyAuthError,
@@ -198,7 +200,7 @@ def test_user_id_is_account_identifier_without_customer_database_cookie() -> Non
     assert metadata.language_id == "da-DK"
 
 
-async def test_customer_database_header_is_optional_during_cookie_bootstrap() -> None:
+async def test_browser_context_headers_have_safe_bootstrap_defaults() -> None:
     login = quote('{"id":"synthetic-user","languageId":"da-DK"}')
     session = SimpleNamespace(cookie_jar=CookieJar())
     client = EnergyKeyClient(
@@ -211,7 +213,27 @@ async def test_customer_database_header_is_optional_during_cookie_bootstrap() ->
 
     assert headers["session-id"] == "session"
     assert headers["language-id"] == "da-DK"
-    assert "customer-database-number" not in headers
+    assert headers["customer-database-number"] == "0"
+    assert headers["context-id"] == "Site"
+
+
+async def test_queued_request_builds_session_header_from_latest_cookie() -> None:
+    """A queued request must not snapshot headers before acquiring the lock."""
+    client, request = _request_client(
+        _FakeResponse(200, "true", headers={"Content-Type": "application/json"})
+    )
+
+    await client._request_lock.acquire()
+    task = asyncio.create_task(client.async_heartbeat())
+    await asyncio.sleep(0)
+    client._session.cookie_jar.update_cookies(
+        {"wt3SessionId": "rotated-session"}, URL(client.base_url)
+    )
+    client._request_lock.release()
+
+    await task
+
+    assert request.await_args.kwargs["headers"]["session-id"] == "rotated-session"
 
 
 async def test_auth_rejection_prevents_subsequent_network_requests() -> None:
@@ -241,14 +263,72 @@ async def test_auth_rejection_prevents_subsequent_network_requests() -> None:
     session.request.assert_awaited_once()
 
 
-async def test_successful_json_response_records_authenticated_activity() -> None:
-    client, request = _request_client(
-        _FakeResponse(200, "true", headers={"Content-Type": "application/json"})
+async def test_successful_consumption_is_tracked_per_meter(load_fixture) -> None:
+    response = _FakeResponse(
+        200,
+        json.dumps(load_fixture("water_consumption.json")),
+        headers={"Content-Type": "application/json"},
+    )
+    client, request = _request_client(response)
+    meter = EnergyKeyMeter(item_id="meter", key="meter-key")
+    other_meter = EnergyKeyMeter(item_id="other", key="other-meter-key")
+    view = ConsumptionView(
+        "view", "usageConsumption", "cubic_meter", "m3", "month_by_days"
     )
 
-    await client.async_heartbeat()
+    assert client.seconds_since_consumption(meter) == float("inf")
+    await client.async_get_consumption(
+        meter,
+        view,
+        datetime(2026, 8, 1, tzinfo=UTC),
+        datetime(2026, 8, 2, tzinfo=UTC),
+        request_attempts=1,
+    )
 
-    assert client.seconds_since_activity < 1
+    assert client.seconds_since_consumption(meter) < 1
+    assert client.seconds_since_consumption(other_meter) == float("inf")
+    request.assert_awaited_once()
+
+
+async def test_single_attempt_consumption_does_not_retry_server_error() -> None:
+    client, request = _request_client(_FakeResponse(500))
+    meter = EnergyKeyMeter(item_id="meter", key="meter-key")
+    view = ConsumptionView("view", "usage", "kWh", "kWh", "month_by_days")
+
+    with pytest.raises(EnergyKeyConnectionError, match="after 1 attempts"):
+        await client.async_get_consumption(
+            meter,
+            view,
+            datetime(2026, 8, 1, tzinfo=UTC),
+            datetime(2026, 8, 2, tzinfo=UTC),
+            request_attempts=1,
+        )
+
+    assert client.seconds_since_consumption(meter) == float("inf")
+    request.assert_awaited_once()
+
+
+async def test_valid_json_data_response_renews_item_before_schema_validation() -> None:
+    client, request = _request_client(
+        _FakeResponse(
+            200,
+            '{"series":[]}',
+            headers={"Content-Type": "application/json"},
+        )
+    )
+    meter = EnergyKeyMeter(item_id="meter", key="meter-key")
+    view = ConsumptionView("view", "usage", "kWh", "kWh", "month_by_days")
+
+    with pytest.raises(EnergyKeyProtocolError, match="no consumption points"):
+        await client.async_get_consumption(
+            meter,
+            view,
+            datetime(2026, 8, 1, tzinfo=UTC),
+            datetime(2026, 8, 2, tzinfo=UTC),
+            request_attempts=1,
+        )
+
+    assert client.seconds_since_consumption(meter) < 1
     request.assert_awaited_once()
 
 

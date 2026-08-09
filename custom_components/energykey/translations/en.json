@@ -53,7 +53,7 @@
         "name": "Latest return temperature"
       },
       "last_successful_heartbeat": {
-        "name": "Last successful heartbeat"
+        "name": "Last successful session renewal"
       }
     }
   }

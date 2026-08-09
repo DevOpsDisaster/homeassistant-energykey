@@ -19,6 +19,7 @@ from aiohttp import ClientError, ClientSession
 from yarl import URL
 
 from .const import (
+    DEFAULT_CUSTOMER_DATABASE_NUMBER,
     ENERGYKEY_HOST_SUFFIX,
     ITEM_CATEGORY,
     MAX_COOKIE_COUNT,
@@ -32,6 +33,7 @@ from .const import (
     REQUEST_RETRY_BASE_SECONDS,
     REQUEST_TIMEOUT_SECONDS,
     REQUIRED_COOKIES,
+    SITE_CONTEXT_ID,
     ZOOM_LEVEL_DAY_CANDIDATE,
 )
 from .models import (
@@ -224,7 +226,7 @@ class EnergyKeyClient:
         self.base_url = normalize_base_url(base_url)
         self._origin = URL(self.base_url).origin()
         self._request_lock = asyncio.Lock()
-        self._last_activity = 0.0
+        self._last_consumption_activity: dict[str, float] = {}
         self._authentication_rejected = False
         self._metadata = session_metadata(cookies)
         self._session.cookie_jar.update_cookies(dict(cookies), URL(self.base_url))
@@ -234,12 +236,12 @@ class EnergyKeyClient:
         """Return non-secret session metadata."""
         return self._metadata
 
-    @property
-    def seconds_since_activity(self) -> float:
-        """Return seconds since the last authenticated response."""
-        if self._last_activity == 0:
+    def seconds_since_consumption(self, meter: EnergyKeyMeter) -> float:
+        """Return seconds since a successful data response for one meter."""
+        last_activity = self._last_consumption_activity.get(meter.key, 0.0)
+        if last_activity == 0:
             return float("inf")
-        return monotonic() - self._last_activity
+        return monotonic() - last_activity
 
     @property
     def cookie_state(self) -> dict[str, str]:
@@ -296,14 +298,14 @@ class EnergyKeyClient:
         view: ConsumptionView,
         start: datetime,
         end: datetime,
+        *,
+        request_attempts: int | None = None,
     ) -> ConsumptionResult:
         """Fetch one time range from a consumption view."""
         if view.zoom_level is None:
             raise EnergyKeyProtocolError("The consumption view has no daily zoom level")
-        payload = await self._request_json(
-            "POST",
-            "/wts/consumptionView/data",
-            data={
+        kwargs: dict[str, Any] = {
+            "data": {
                 "viewId": view.view_id,
                 "itemId": meter.item_id,
                 "itemCategory": ITEM_CATEGORY,
@@ -311,8 +313,16 @@ class EnergyKeyClient:
                 "prescaleUnitId": view.unit_id,
                 "start": str(_epoch_milliseconds(start)),
                 "end": str(_epoch_milliseconds(end)),
-            },
+            }
+        }
+        if request_attempts is not None:
+            kwargs["attempts"] = request_attempts
+        payload = await self._request_json(
+            "POST", "/wts/consumptionView/data", **kwargs
         )
+        # A valid JSON response has renewed EnergyKey's item-scoped context even
+        # if a later schema check rejects its consumption payload.
+        self._last_consumption_activity[meter.key] = monotonic()
         return _parse_consumption(payload, view)
 
     async def _request_json(
@@ -322,15 +332,18 @@ class EnergyKeyClient:
         *,
         params: Mapping[str, str] | None = None,
         data: Mapping[str, str] | None = None,
+        attempts: int = REQUEST_RETRY_ATTEMPTS,
     ) -> Any:
         url = URL(self.base_url).join(URL(path))
-        for attempt in range(1, REQUEST_RETRY_ATTEMPTS + 1):
+        if attempts < 1:
+            raise ValueError("EnergyKey request attempts must be positive")
+        for attempt in range(1, attempts + 1):
             try:
                 return await self._request_json_once(
                     method, url, path, params=params, data=data
                 )
             except _EnergyKeyTransientError as err:
-                if attempt == REQUEST_RETRY_ATTEMPTS:
+                if attempt == attempts:
                     raise EnergyKeyConnectionError(
                         f"{err} after {attempt} attempts"
                     ) from err
@@ -341,7 +354,7 @@ class EnergyKeyClient:
                     method,
                     path,
                     attempt,
-                    REQUEST_RETRY_ATTEMPTS,
+                    attempts,
                     err,
                     delay,
                 )
@@ -358,9 +371,9 @@ class EnergyKeyClient:
         data: Mapping[str, str] | None,
     ) -> Any:
         """Perform one request attempt and classify retryable failures."""
-        headers = self._headers()
         try:
             async with self._request_lock, asyncio.timeout(REQUEST_TIMEOUT_SECONDS):
+                headers = self._headers()
                 if self._authentication_rejected:
                     raise EnergyKeyAuthError(
                         "EnergyKey previously rejected the current session"
@@ -446,7 +459,6 @@ class EnergyKeyClient:
                         raise EnergyKeyProtocolError(
                             "EnergyKey returned malformed JSON"
                         ) from err
-                    self._last_activity = monotonic()
                     return result
         except EnergyKeyError:
             raise
@@ -471,12 +483,10 @@ class EnergyKeyClient:
         session_id = cookies.get("wt3SessionId")
         if session_id:
             headers["session-id"] = session_id
-        if self._metadata.customer_database_number:
-            headers["customer-database-number"] = (
-                self._metadata.customer_database_number
-            )
-        if self._metadata.context_id:
-            headers["context-id"] = self._metadata.context_id
+        headers["customer-database-number"] = (
+            self._metadata.customer_database_number or DEFAULT_CUSTOMER_DATABASE_NUMBER
+        )
+        headers["context-id"] = self._metadata.context_id or SITE_CONTEXT_ID
         if self._metadata.language_id:
             headers["language-id"] = self._metadata.language_id
         return headers

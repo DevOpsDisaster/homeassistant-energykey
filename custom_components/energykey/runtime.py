@@ -19,7 +19,7 @@ class EnergyKeyRuntimeData:
     coordinator: EnergyKeyCoordinator
     store: EnergyKeyStore
     data_refresh_task: asyncio.Task[None] | None = None
-    heartbeat_task: asyncio.Task[None] | None = None
+    consumption_keepalive_task: asyncio.Task[None] | None = None
     reauth_started: bool = False
     last_successful_heartbeat: datetime | None = None
     last_heartbeat_error: str | None = None
