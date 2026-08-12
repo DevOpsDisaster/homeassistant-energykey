@@ -7,10 +7,10 @@ state.
 2. Open the config-entry menu and choose **Delete**.
 3. Confirm the deletion.
 
-The integration then stops polling and heartbeat tasks, closes its private
-session, deletes its stored cookies and normalized history, and queues removal
-of its external statistics. Devices and entities belonging only to that config
-entry are removed by Home Assistant.
+The integration then stops the scheduled refresh and per-meter consumption-
+keepalive tasks, closes its private session, deletes its stored cookies and
+normalized history, and queues removal of its external statistics. Devices and
+entities belonging only to that config entry are removed by Home Assistant.
 
 To revoke the portal session as well, sign out of EnergyKey and invalidate
 active sessions if the portal provides that control. Removing local files does

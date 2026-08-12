@@ -23,13 +23,13 @@ from .api import (
     EnergyKeyConnectionError,
     EnergyKeyProtocolError,
     EnergyKeyRateLimitError,
+    EnergyKeyStaleResourceError,
 )
 from .const import (
     CONF_BASE_URL,
     CONF_COOKIES,
+    CONSUMPTION_KEEPALIVE_RETRY_INTERVAL,
     DOMAIN,
-    HEARTBEAT_INTERVAL,
-    HEARTBEAT_RETRY_INTERVAL,
     SHUTDOWN_HEARTBEAT_TIMEOUT_SECONDS,
     heartbeat_update_signal,
 )
@@ -98,10 +98,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: EnergyKeyConfigEntry) ->
         _async_initial_data_refresh(entry),
         "EnergyKey initial data refresh",
     )
-    runtime.heartbeat_task = entry.async_create_background_task(
+    runtime.consumption_keepalive_task = entry.async_create_background_task(
         hass,
-        _async_heartbeat_loop(hass, entry),
-        "EnergyKey session heartbeat",
+        _async_consumption_keepalive_loop(hass, entry),
+        "EnergyKey consumption keepalive",
     )
     entry.async_on_unload(
         hass.bus.async_listen_once(
@@ -124,10 +124,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: EnergyKeyConfigEntry) -
             await runtime.data_refresh_task
         except asyncio.CancelledError:
             pass
-    if runtime.heartbeat_task is not None:
-        runtime.heartbeat_task.cancel()
+    if runtime.consumption_keepalive_task is not None:
+        runtime.consumption_keepalive_task.cancel()
         try:
-            await runtime.heartbeat_task
+            await runtime.consumption_keepalive_task
         except asyncio.CancelledError:
             pass
     await runtime.store.async_set_cookies(runtime.client.cookie_state)
@@ -160,35 +160,65 @@ async def _async_shutdown_heartbeat(_event: Event, entry: EnergyKeyConfigEntry) 
         _LOGGER.debug("Could not send EnergyKey shutdown heartbeat", exc_info=True)
 
 
-async def _async_heartbeat_loop(
+async def _async_consumption_keepalive_loop(
     hass: HomeAssistant, entry: EnergyKeyConfigEntry
 ) -> None:
-    """Keep the cookie session alive independently of entity polling."""
+    """Keep each discovered consumption item active between full refreshes."""
     runtime = entry.runtime_data
-    normal_wait = HEARTBEAT_INTERVAL.total_seconds()
-    retry_wait = HEARTBEAT_RETRY_INTERVAL.total_seconds()
+    if runtime.data_refresh_task is not None:
+        await runtime.data_refresh_task
 
-    while True:
-        wait_seconds = max(1.0, normal_wait - runtime.client.seconds_since_activity)
-        await asyncio.sleep(wait_seconds)
+    while not runtime.reauth_started:
+        delay = runtime.coordinator.seconds_until_consumption_keepalive()
+        if delay > 0:
+            await asyncio.sleep(delay)
+
+        # A full coordinator refresh may have completed while this task slept.
+        # Recheck before probing so the refresh and keepalive cannot race.
+        if runtime.coordinator.seconds_until_consumption_keepalive() > 0:
+            continue
+
         try:
-            await runtime.client.async_heartbeat()
-            await runtime.store.async_set_cookies(runtime.client.cookie_state)
+            probes_sent = await runtime.coordinator.async_run_consumption_keepalive()
+            if not probes_sent:
+                continue
+        except EnergyKeyStaleResourceError:
+            runtime.last_heartbeat_error = "stale_resource"
+            _start_reauth_once(hass, entry)
+            return
         except EnergyKeyAuthError:
             runtime.last_heartbeat_error = "authentication"
-            if not runtime.reauth_started:
-                runtime.reauth_started = True
-                entry.async_start_reauth(hass)
+            _start_reauth_once(hass, entry)
             return
         except EnergyKeyRateLimitError as err:
             runtime.last_heartbeat_error = "rate_limited"
-            server_wait = err.retry_after or retry_wait
-            await asyncio.sleep(max(retry_wait, min(server_wait, normal_wait)))
+            retry_after = (
+                err.retry_after or CONSUMPTION_KEEPALIVE_RETRY_INTERVAL.total_seconds()
+            )
+            await asyncio.sleep(
+                max(
+                    CONSUMPTION_KEEPALIVE_RETRY_INTERVAL.total_seconds(),
+                    retry_after,
+                )
+            )
             continue
-        except (EnergyKeyConnectionError, EnergyKeyProtocolError):
+        except EnergyKeyProtocolError:
+            runtime.last_heartbeat_error = "protocol"
+            await asyncio.sleep(CONSUMPTION_KEEPALIVE_RETRY_INTERVAL.total_seconds())
+            continue
+        except EnergyKeyConnectionError:
             runtime.last_heartbeat_error = "connection"
-            await asyncio.sleep(retry_wait)
+            await asyncio.sleep(CONSUMPTION_KEEPALIVE_RETRY_INTERVAL.total_seconds())
             continue
         runtime.last_successful_heartbeat = datetime.now(UTC)
         runtime.last_heartbeat_error = None
         async_dispatcher_send(hass, heartbeat_update_signal(entry.entry_id))
+
+
+def _start_reauth_once(hass: HomeAssistant, entry: EnergyKeyConfigEntry) -> None:
+    """Start one reauthentication flow for a rejected consumption session."""
+    runtime = entry.runtime_data
+    if runtime.reauth_started:
+        return
+    runtime.reauth_started = True
+    entry.async_start_reauth(hass)

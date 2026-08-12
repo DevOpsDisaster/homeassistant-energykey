@@ -11,9 +11,12 @@ CONF_ACCOUNT_ID: Final = "account_id"
 
 DEFAULT_BASE_URL: Final = "https://dinforsyning.wt.energykey.dk"
 ENERGYKEY_HOST_SUFFIX: Final = ".wt.energykey.dk"
+SITE_CONTEXT_ID: Final = "Site"
+DEFAULT_CUSTOMER_DATABASE_NUMBER: Final = "0"
 
-HEARTBEAT_INTERVAL: Final = timedelta(minutes=15)
-HEARTBEAT_RETRY_INTERVAL: Final = timedelta(minutes=1)
+CONSUMPTION_KEEPALIVE_INTERVAL: Final = timedelta(minutes=20)
+CONSUMPTION_KEEPALIVE_RETRY_INTERVAL: Final = timedelta(minutes=1)
+CONSUMPTION_KEEPALIVE_LOOKBACK_DAYS: Final = 7
 SHUTDOWN_HEARTBEAT_TIMEOUT_SECONDS: Final = 5
 DATA_UPDATE_INTERVAL: Final = timedelta(hours=6)
 RECENT_HISTORY_DAYS: Final = 45

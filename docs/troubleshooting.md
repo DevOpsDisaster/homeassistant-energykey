@@ -17,27 +17,42 @@ missing expected, volume, or temperature entity usually means that the portal
 does not expose the corresponding stable internal series for that meter.
 
 Temporary update failures leave the last valid coordinator data in memory but
-mark entities unavailable. A definitive 401, 403, false heartbeat, or login
-redirect stops further session requests and creates a Home Assistant reauth
-repair.
+mark entities unavailable. A definitive 401, 403, false startup heartbeat, or
+login redirect stops further session requests and creates a Home Assistant
+reauth repair.
 
-Network errors, timeouts, and HTTP 5xx responses are retried up to three times
-with a short exponential delay. If all attempts fail, the coordinator keeps the
-last valid data and retries at its next scheduled refresh. Normal logs identify
-the HTTP method, endpoint, status, and attempt number. Debug logs also include
-up to 2 KiB of an HTTP 5xx response body, with control characters escaped and a
-truncation marker when needed. Query parameters, request bodies, and cookies
-are never logged. Treat debug response excerpts as potentially sensitive and
-inspect them before sharing.
+EnergyKey also maintains a consumption context for each individual meter item.
+A successful generic heartbeat or a request for another meter does not renew
+that context. The integration therefore queries each meter's primary view after
+20 minutes without consumption activity, using a seven-day lookback through the
+current day. If EnergyKey responds with error `1101` because an item or view
+context has become stale, rediscovery cannot repair the existing session and
+the integration starts reauthentication.
+
+Normal refresh requests retry network errors, timeouts, and ordinary HTTP 5xx
+responses up to three times with a short exponential delay. A lightweight
+20-minute consumption keepalive uses one request attempt; its loop retries a
+transient failure after one minute and respects bounded `Retry-After` guidance.
+If attempts still fail, the coordinator keeps the last valid data. Normal logs
+identify the HTTP method, endpoint, status, and attempt number. Debug logs also
+include up to 2 KiB of an HTTP 5xx response body, with control characters
+escaped and a truncation marker when needed. Query parameters, request bodies,
+and cookies are never logged. Treat debug response excerpts as potentially
+sensitive and inspect them before sharing.
 
 Initial meter discovery should complete quickly. Historical loading continues
 in the background and can take longer. Failed old month chunks are retried on
-later daily refreshes.
+later full reconciliations, which run every 6 hours and always revisit the
+newest 45 days. The 20-minute primary-view keepalive also acts as a change
+detector: a new or revised complete point starts a normal refresh immediately,
+while unchanged or incomplete points do not.
 
 During a graceful Home Assistant shutdown, EnergyKey sends one final heartbeat
-with a five-second deadline and persists any rotated cookies. This cannot run
-after a crash, forced kill, or power loss, and it cannot preserve a session
-through a long shutdown.
+with a five-second deadline and persists any rotated cookies. Startup also
+sends a heartbeat before meter discovery. These heartbeat calls help the
+cookie session but do not replace the per-meter consumption keepalives. The
+shutdown call cannot run after a crash, forced kill, or power loss, and it
+cannot preserve an item-scoped context through a long shutdown.
 
 ## Diagnostics
 

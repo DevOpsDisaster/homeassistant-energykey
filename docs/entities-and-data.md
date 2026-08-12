@@ -14,7 +14,7 @@ device serial number.
 | Latest completed daily heat volume | Heat when available | Recognized volume unit | Yes | Volume transported during the newest complete heat period | Up to 13 months | Yes |
 | Latest flow temperature | Heat when available | °C or °F | Yes | Temperature value matching the newest complete heat period | Up to 13 months | No |
 | Latest return temperature | Heat when available | °C or °F | Yes | Temperature value matching the newest complete heat period | Up to 13 months | No |
-| Last successful heartbeat | Integration | Timestamp | No | Last successful keepalive request | No | No |
+| Last successful session renewal | Integration | Timestamp | No | Latest successful startup-heartbeat or scheduled consumption-keepalive pass; the underlying `last_successful_heartbeat` key remains unchanged | No | No |
 
 The daily values are historical aggregates, not live measurements. Data may be
 several days old. The integration does not expose a physical meter-reading
@@ -52,9 +52,18 @@ imported as external long-term statistics. The initial refresh can backfill up
 to 13 calendar months. The sensor entities' ordinary state history begins when
 the integration is installed.
 
-The newest 45 days are fetched again daily. Portal corrections replace
-existing statistics at the same timestamps rather than adding duplicates.
-Expected values and temperatures are not imported as measured consumption.
+The newest 45 days are fetched again during a full reconciliation every 6
+hours. Portal corrections replace existing statistics at the same timestamps
+rather than adding duplicates. Expected values and temperatures are not
+imported as measured consumption.
+
+Between full reconciliations, each meter's primary consumption view is queried
+after 20 minutes without a successful consumption request for that meter. This
+lightweight keepalive uses a seven-day lookback through the current day. If it
+contains a new or revised complete actual- or expected-consumption point, the
+integration starts a normal refresh for all views. Incomplete or unchanged
+points do not trigger that extra refresh; the six-hour reconciliation remains
+the fallback for delayed values and corrections.
 
 External statistic IDs start with `energykey:` and use opaque SHA-256-derived
 meter keys. They are not physical lifetime meter readings. Removing the config

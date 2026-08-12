@@ -8,8 +8,19 @@ telemetry to the project maintainer and does not contact HACS, GitHub, or an
 analytics service at runtime.
 
 The manually copied Cookie header is used to bootstrap a private HTTP session.
-Heartbeat requests keep the server session active; consumption requests run
-after setup and then daily.
+The integration sends one heartbeat during startup. Full consumption
+reconciliation runs after setup and every 6 hours. Between those refreshes, a
+lightweight primary-consumption request is sent for each meter after 20 minutes
+without consumption activity for that meter. It uses a seven-day lookback
+through the current day and both renews EnergyKey's item-scoped consumption
+context and checks for new or revised complete points. Only a detected
+complete-point change starts an additional normal refresh. One final
+best-effort heartbeat is sent during a graceful Home Assistant shutdown.
+
+EnergyKey's consumption context is scoped to each meter item and is separate
+from the generic heartbeat session. If EnergyKey reports that context as stale,
+the integration requests reauthentication instead of repeatedly sending data
+requests with an unusable context.
 
 ## Locally stored data
 
