@@ -6,6 +6,8 @@ prereleases.
 
 ## Unreleased
 
+## 0.1.0-rc.4 - 2026-08-12
+
 ### Changed
 
 - Replaced the periodic generic heartbeat with a lightweight primary-
