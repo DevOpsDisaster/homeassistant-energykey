@@ -330,6 +330,8 @@ async def test_valid_json_data_response_renews_item_before_schema_validation() -
 
     assert client.seconds_since_consumption(meter) == float("inf")
     request.assert_awaited_once()
+
+
 async def test_rate_limit_exposes_bounded_retry_hint() -> None:
     client, _ = _request_client(_FakeResponse(429, headers={"Retry-After": "99999"}))
 
