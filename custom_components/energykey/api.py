@@ -320,10 +320,11 @@ class EnergyKeyClient:
         payload = await self._request_json(
             "POST", "/wts/consumptionView/data", **kwargs
         )
-        # A valid JSON response has renewed EnergyKey's item-scoped context even
-        # if a later schema check rejects its consumption payload.
+        result = _parse_consumption(payload, view)
+        # Only record consumption activity after successful parsing so that
+        # the keepalive scheduler can retry on protocol/schema failures.
         self._last_consumption_activity[meter.key] = monotonic()
-        return _parse_consumption(payload, view)
+        return result
 
     async def _request_json(
         self,

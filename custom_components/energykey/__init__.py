@@ -202,7 +202,11 @@ async def _async_consumption_keepalive_loop(
                 )
             )
             continue
-        except (EnergyKeyConnectionError, EnergyKeyProtocolError):
+        except EnergyKeyProtocolError:
+            runtime.last_heartbeat_error = "protocol"
+            await asyncio.sleep(CONSUMPTION_KEEPALIVE_RETRY_INTERVAL.total_seconds())
+            continue
+        except EnergyKeyConnectionError:
             runtime.last_heartbeat_error = "connection"
             await asyncio.sleep(CONSUMPTION_KEEPALIVE_RETRY_INTERVAL.total_seconds())
             continue
