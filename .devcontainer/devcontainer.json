@@ -6,7 +6,6 @@
   "workspaceFolder": "/workspace",
   "shutdownAction": "stopCompose",
   "remoteUser": "vscode",
-  "initializeCommand": "docker compose -f \"${localWorkspaceFolder}/.devcontainer/compose.yaml\" build dev",
   "forwardPorts": ["homeassistant:8123"],
   "portsAttributes": {
     "homeassistant:8123": {
