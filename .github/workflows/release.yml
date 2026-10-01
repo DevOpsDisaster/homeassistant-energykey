@@ -63,7 +63,7 @@ jobs:
           ruff format --check .
           pytest --cov=custom_components.energykey --cov-report=term --cov-fail-under=90
       - name: Run Hassfest
-        uses: home-assistant/actions/hassfest@a7c616ce81ccda50150bf1595786c71b1883fabb
+        uses: home-assistant/actions/hassfest@06749dd8c0b54f350bc69c8752456cee498808a3
       # Validation is read-only and does not submit anything to HACS.
       - name: Run HACS validation (no publishing)
         uses: hacs/action@1ebf01c408f29afcb6406bd431bc98fd8cbb15aa
@@ -73,7 +73,7 @@ jobs:
           # Default-store repository metadata is intentionally deferred.
           ignore: topics description
       - name: Scan tagged history for secrets
-        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
