@@ -6,6 +6,12 @@ prereleases.
 
 ## Unreleased
 
+## 0.1.0-rc.6 - 2026-11-11
+
+### Fixed
+
+- Preserve new cookies during reauthentication when unloading the old session.
+
 ## 0.1.0-rc.5 - 2026-11-11
 
 ### Fixed

@@ -6,6 +6,7 @@ import asyncio
 import json
 from unittest.mock import AsyncMock, patch
 
+from homeassistant import config_entries, data_entry_flow
 from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.const import EntityCategory
 from homeassistant.helpers import device_registry as dr
@@ -18,6 +19,7 @@ from custom_components.energykey.api import (
     EnergyKeyStaleResourceError,
     _parse_consumption,
 )
+from custom_components.energykey.config_flow import ValidatedInput
 from custom_components.energykey.const import (
     CONF_ACCOUNT_ID,
     CONF_BASE_URL,
@@ -243,6 +245,55 @@ async def test_existing_version_two_entry_preserves_private_state(
     assert restored.statistics_offset("preserved") == 42.0
     assert restored.cookies == client.cookie_state
     client.consumption_gate.set()
+    assert entry.runtime_data.data_refresh_task is not None
+    await entry.runtime_data.data_refresh_task
+
+
+async def test_reauthentication_reloads_with_new_cookies(hass, load_fixture) -> None:
+    entry, old_client = await _setup_entry(hass, load_fixture)
+    old_history = {
+        key: entry.runtime_data.store.history(key)
+        for key in entry.runtime_data.store.history_keys
+    }
+    new_cookies = {"wt3SessionId": "new-session", "wt3login": "new-login"}
+
+    class ReauthenticatedClient(FakeEnergyKeyClient):
+        @property
+        def cookie_state(self) -> dict[str, str]:
+            return new_cookies
+
+    new_client = ReauthenticatedClient(load_fixture)
+    new_client.consumption_gate = asyncio.Event()
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": config_entries.SOURCE_REAUTH, "entry_id": entry.entry_id},
+        data=dict(entry.data),
+    )
+    with (
+        patch(
+            "custom_components.energykey.config_flow.async_validate_input",
+            AsyncMock(return_value=ValidatedInput(BASE_URL, new_cookies, ACCOUNT_ID)),
+        ),
+        patch(
+            "custom_components.energykey.EnergyKeyClient", return_value=new_client
+        ) as client_factory,
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {CONF_COOKIES: "synthetic-cookie"}
+        )
+        await hass.async_block_till_done()
+
+    assert result["type"] is data_entry_flow.FlowResultType.ABORT
+    assert result["reason"] == "reauth_successful"
+    assert old_client.detach_called
+    assert client_factory.call_args.args[2] == new_cookies
+    assert entry.runtime_data.store.cookies == new_cookies
+    assert {
+        key: entry.runtime_data.store.history(key)
+        for key in entry.runtime_data.store.history_keys
+    } == old_history
+    assert CONF_COOKIES not in entry.data
+    new_client.consumption_gate.set()
     assert entry.runtime_data.data_refresh_task is not None
     await entry.runtime_data.data_refresh_task
 

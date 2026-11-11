@@ -94,8 +94,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: EnergyKeyConfigEntry) ->
     """Set up EnergyKey from a config entry."""
     store = EnergyKeyStore(hass, entry.entry_id)
     await store.async_load()
-    cookies = _valid_cookies(store.cookies) or _valid_cookies(
-        entry.data.get(CONF_COOKIES)
+    cookies = _valid_cookies(entry.data.get(CONF_COOKIES)) or _valid_cookies(
+        store.cookies
     )
     if cookies is None:
         raise ConfigEntryNotReady("EnergyKey session state is missing")

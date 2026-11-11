@@ -36,7 +36,6 @@ from .const import (
     DEFAULT_BASE_URL,
     DOMAIN,
 )
-from .storage import EnergyKeyStore
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -209,9 +208,6 @@ class EnergyKeyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 if validated.account_id != entry.unique_id:
                     errors["base"] = "wrong_account"
                 else:
-                    store = EnergyKeyStore(self.hass, entry.entry_id)
-                    await store.async_load()
-                    await store.async_set_cookies(validated.cookies)
                     return self.async_update_reload_and_abort(
                         entry,
                         data_updates={
