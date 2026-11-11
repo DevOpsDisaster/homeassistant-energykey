@@ -36,7 +36,6 @@ from custom_components.energykey.const import (
     MAX_COOKIE_COUNT,
     MAX_COOKIE_HEADER_LENGTH,
     MAX_COOKIE_VALUE_LENGTH,
-    MAX_ERROR_BODY_LOG_BYTES,
     MAX_LOGIN_METADATA_DEPTH,
     MAX_RESPONSE_BODY_BYTES,
 )
@@ -393,12 +392,12 @@ async def test_error_1101_marks_consumption_resource_stale_without_reauth() -> N
     request.assert_awaited_once()
 
 
-async def test_large_error_1101_is_classified_before_log_truncation(caplog) -> None:
+async def test_large_error_1101_is_classified_without_logging_body(caplog) -> None:
     body = json.dumps(
         {
             "errorCode": 1101,
             "errorMsg": "Could not get item.",
-            "metadata": {"detail": "x" * MAX_ERROR_BODY_LOG_BYTES},
+            "metadata": {"detail": "private-detail" * 200},
         }
     )
     client, _ = _request_client(_FakeResponse(500, body))
@@ -416,12 +415,11 @@ async def test_large_error_1101_is_classified_before_log_truncation(caplog) -> N
             datetime(2026, 8, 2, tzinfo=UTC),
         )
 
-    assert "<truncated>" in caplog.text
-    assert body not in caplog.text
+    assert "private-detail" not in caplog.text
 
 
-async def test_server_error_body_is_logged_at_debug_and_bounded(caplog) -> None:
-    body = "useful detail\n" + "x" * MAX_ERROR_BODY_LOG_BYTES
+async def test_server_error_body_is_not_logged_at_debug(caplog) -> None:
+    body = "private-detail\n" + "x" * 2048
     client, _ = _request_client(_FakeResponse(500, body))
 
     with (
@@ -431,9 +429,7 @@ async def test_server_error_body_is_logged_at_debug_and_bounded(caplog) -> None:
     ):
         await client.async_heartbeat()
 
-    assert "useful detail\\n" in caplog.text
-    assert "<truncated>" in caplog.text
-    assert body not in caplog.text
+    assert "private-detail" not in caplog.text
 
 
 async def test_server_error_body_with_unknown_charset_still_retries(caplog) -> None:
@@ -449,7 +445,7 @@ async def test_server_error_body_with_unknown_charset_still_retries(caplog) -> N
         await client.async_heartbeat()
 
     assert request.await_count == 3
-    assert "useful detail" in caplog.text
+    assert "useful detail" not in caplog.text
 
 
 @pytest.mark.parametrize("value", [None, "invalid", "-1", "nan"])

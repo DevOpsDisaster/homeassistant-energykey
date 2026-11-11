@@ -34,11 +34,8 @@ responses up to three times with a short exponential delay. A lightweight
 20-minute consumption keepalive uses one request attempt; its loop retries a
 transient failure after one minute and respects bounded `Retry-After` guidance.
 If attempts still fail, the coordinator keeps the last valid data. Normal logs
-identify the HTTP method, endpoint, status, and attempt number. Debug logs also
-include up to 2 KiB of an HTTP 5xx response body, with control characters
-escaped and a truncation marker when needed. Query parameters, request bodies,
-and cookies are never logged. Treat debug response excerpts as potentially
-sensitive and inspect them before sharing.
+identify the HTTP method, endpoint, status, and attempt number. Query parameters,
+request bodies, cookies, and provider response bodies are not logged.
 
 Initial meter discovery should complete quickly. Historical loading continues
 in the background and can take longer. Failed old month chunks are retried on

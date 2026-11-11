@@ -99,13 +99,6 @@ async def async_setup_entry(
     ):
         if registry_entry.translation_key in REMOVED_SENSOR_TRANSLATION_KEYS:
             entity_registry.async_remove(registry_entry.entity_id)
-        elif registry_entry.unique_id == _heartbeat_unique_id(
-            entry
-        ) and registry_entry.entity_id.startswith("sensor.last_successful_heartbeat"):
-            entity_registry.async_update_entity(
-                registry_entry.entity_id,
-                new_entity_id=_heartbeat_entity_id(entry),
-            )
 
     known_entities: set[tuple[str, str]] = set()
 

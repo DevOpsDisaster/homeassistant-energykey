@@ -6,6 +6,16 @@ prereleases.
 
 ## Unreleased
 
+## 0.1.0-rc.5 - 2026-11-11
+
+### Fixed
+
+- Support existing version 2 config entries and private storage without
+  removing session cookies, history, or statistics offsets.
+- Preserve newer session cookies when migrating version 1 entries and retain
+  existing heartbeat entity IDs.
+- Avoid logging potentially sensitive EnergyKey error response bodies.
+
 ## 0.1.0-rc.4 - 2026-08-12
 
 ### Changed

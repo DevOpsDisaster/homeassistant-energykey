@@ -1,5 +1,12 @@
 # EnergyKey for Home Assistant
 
+[![HACS Custom](https://img.shields.io/badge/HACS-Custom-orange.svg?logo=homeassistantcommunitystore)](https://github.com/hacs/integration)
+[![Validate](https://github.com/DevOpsDisaster/homeassistant-energykey/actions/workflows/validate.yml/badge.svg)](https://github.com/DevOpsDisaster/homeassistant-energykey/actions/workflows/validate.yml)
+[![Latest release](https://img.shields.io/github/v/release/DevOpsDisaster/homeassistant-energykey?include_prereleases)](https://github.com/DevOpsDisaster/homeassistant-energykey/releases)
+[![License](https://img.shields.io/github/license/DevOpsDisaster/homeassistant-energykey)](LICENSE)
+
+[![Open in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=DevOpsDisaster&repository=homeassistant-energykey&category=integration)
+
 EnergyKey is an unofficial, read-only Home Assistant custom integration for
 water and district-heating data exposed by EnergyKey supplier portals. It is
 intended for Danish utilities that use a portal below `*.wt.energykey.dk`, with
@@ -304,7 +311,6 @@ logger:
 
 Remove debug logging after troubleshooting. Before sharing any log, search it
 for cookies, tokens, addresses, customer details, and meter identifiers.
-HTTP 5xx debug entries can include up to 2 KiB of the provider's response body.
 
 ## Development
 

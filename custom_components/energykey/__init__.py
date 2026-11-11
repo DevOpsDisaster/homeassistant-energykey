@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from functools import partial
 
@@ -24,12 +25,14 @@ from .api import (
     EnergyKeyProtocolError,
     EnergyKeyRateLimitError,
     EnergyKeyStaleResourceError,
+    normalize_base_url,
 )
 from .const import (
     CONF_BASE_URL,
     CONF_COOKIES,
     CONSUMPTION_KEEPALIVE_RETRY_INTERVAL,
     DOMAIN,
+    REQUIRED_COOKIES,
     SHUTDOWN_HEARTBEAT_TIMEOUT_SECONDS,
     heartbeat_update_signal,
 )
@@ -46,11 +49,61 @@ PLATFORMS: list[Platform] = [Platform.SENSOR]
 type EnergyKeyConfigEntry = ConfigEntry[EnergyKeyRuntimeData]
 
 
+def _valid_cookies(value: object) -> dict[str, str] | None:
+    """Return cookies only when the authenticated session requirements are met."""
+    if not isinstance(value, Mapping) or not all(
+        isinstance(key, str) and isinstance(item, str) and item
+        for key, item in value.items()
+    ):
+        return None
+    cookies = dict(value)
+    return cookies if REQUIRED_COOKIES.issubset(cookies) else None
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Migrate legacy config entries while preserving their identity."""
+    if entry.version > 2:
+        return False
+    if entry.version == 2:
+        return True
+
+    data = dict(entry.data)
+    try:
+        data[CONF_BASE_URL] = normalize_base_url(str(data[CONF_BASE_URL]))
+    except (KeyError, ValueError):
+        return False
+
+    bootstrap_cookies = _valid_cookies(data.pop(CONF_COOKIES, None))
+    store = EnergyKeyStore(hass, entry.entry_id)
+    await store.async_load()
+    if _valid_cookies(store.cookies) is None:
+        if bootstrap_cookies is None:
+            return False
+        await store.async_set_cookies(bootstrap_cookies)
+
+    hass.config_entries.async_update_entry(
+        entry,
+        data=data,
+        version=2,
+        minor_version=1,
+    )
+    return True
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: EnergyKeyConfigEntry) -> bool:
     """Set up EnergyKey from a config entry."""
     store = EnergyKeyStore(hass, entry.entry_id)
     await store.async_load()
-    cookies = store.cookies or dict(entry.data[CONF_COOKIES])
+    cookies = _valid_cookies(store.cookies) or _valid_cookies(
+        entry.data.get(CONF_COOKIES)
+    )
+    if cookies is None:
+        raise ConfigEntryNotReady("EnergyKey session state is missing")
+    if CONF_COOKIES in entry.data:
+        await store.async_set_cookies(cookies)
+        data = dict(entry.data)
+        data.pop(CONF_COOKIES)
+        hass.config_entries.async_update_entry(entry, data=data)
 
     session = async_create_clientsession(hass, cookie_jar=CookieJar())
     client = EnergyKeyClient(session, entry.data[CONF_BASE_URL], cookies)
@@ -178,19 +231,24 @@ async def _async_consumption_keepalive_loop(
         if runtime.coordinator.seconds_until_consumption_keepalive() > 0:
             continue
 
+        runtime.heartbeat_attempts += 1
         try:
             probes_sent = await runtime.coordinator.async_run_consumption_keepalive()
             if not probes_sent:
+                runtime.heartbeat_attempts -= 1
                 continue
         except EnergyKeyStaleResourceError:
+            runtime.consecutive_heartbeat_failures += 1
             runtime.last_heartbeat_error = "stale_resource"
             _start_reauth_once(hass, entry)
             return
         except EnergyKeyAuthError:
+            runtime.consecutive_heartbeat_failures += 1
             runtime.last_heartbeat_error = "authentication"
             _start_reauth_once(hass, entry)
             return
         except EnergyKeyRateLimitError as err:
+            runtime.consecutive_heartbeat_failures += 1
             runtime.last_heartbeat_error = "rate_limited"
             retry_after = (
                 err.retry_after or CONSUMPTION_KEEPALIVE_RETRY_INTERVAL.total_seconds()
@@ -203,15 +261,18 @@ async def _async_consumption_keepalive_loop(
             )
             continue
         except EnergyKeyProtocolError:
+            runtime.consecutive_heartbeat_failures += 1
             runtime.last_heartbeat_error = "protocol"
             await asyncio.sleep(CONSUMPTION_KEEPALIVE_RETRY_INTERVAL.total_seconds())
             continue
         except EnergyKeyConnectionError:
+            runtime.consecutive_heartbeat_failures += 1
             runtime.last_heartbeat_error = "connection"
             await asyncio.sleep(CONSUMPTION_KEEPALIVE_RETRY_INTERVAL.total_seconds())
             continue
         runtime.last_successful_heartbeat = datetime.now(UTC)
         runtime.last_heartbeat_error = None
+        runtime.consecutive_heartbeat_failures = 0
         async_dispatcher_send(hass, heartbeat_update_signal(entry.entry_id))
 
 

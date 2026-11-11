@@ -25,7 +25,6 @@ from .const import (
     MAX_COOKIE_COUNT,
     MAX_COOKIE_HEADER_LENGTH,
     MAX_COOKIE_VALUE_LENGTH,
-    MAX_ERROR_BODY_LOG_BYTES,
     MAX_LOGIN_METADATA_DEPTH,
     MAX_RESPONSE_BODY_BYTES,
     MAX_RETRY_AFTER_SECONDS,
@@ -410,16 +409,7 @@ class EnergyKeyClient:
                             _parse_retry_after(response.headers.get("Retry-After"))
                         )
                     if response.status >= 500:
-                        error_body, error_excerpt = await _async_read_error_body(
-                            response
-                        )
-                        _LOGGER.debug(
-                            "EnergyKey HTTP %d response body for %s %s: %r",
-                            response.status,
-                            method,
-                            path,
-                            error_excerpt,
-                        )
+                        error_body = await _async_read_error_body(response)
                         if _is_stale_consumption_resource(path, error_body):
                             raise EnergyKeyStaleResourceError(
                                 "EnergyKey no longer recognizes a discovered "
@@ -565,8 +555,8 @@ async def _async_read_response_text(response: Any) -> str:
         ) from err
 
 
-async def _async_read_error_body(response: Any) -> tuple[str, str]:
-    """Return bounded classification text and a small safe logging excerpt."""
+async def _async_read_error_body(response: Any) -> str:
+    """Return bounded classification text without logging response data."""
     body = bytearray()
     while len(body) <= MAX_RESPONSE_BODY_BYTES:
         chunk = await response.content.read(
@@ -581,12 +571,7 @@ async def _async_read_error_body(response: Any) -> tuple[str, str]:
         text = bounded.decode(response.charset or "utf-8", errors="replace")
     except LookupError:
         text = bounded.decode("utf-8", errors="replace")
-    excerpt = text[:MAX_ERROR_BODY_LOG_BYTES]
-    if not excerpt:
-        excerpt = "<empty>"
-    if oversized or len(text) > MAX_ERROR_BODY_LOG_BYTES:
-        excerpt = f"{excerpt}… <truncated>"
-    return ("" if oversized else text), excerpt
+    return "" if oversized else text
 
 
 def _parse_retry_after(value: str | None) -> float | None:

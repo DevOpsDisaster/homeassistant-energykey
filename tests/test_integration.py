@@ -10,8 +10,10 @@ from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.const import EntityCategory
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.storage import Store
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.energykey import async_migrate_entry
 from custom_components.energykey.api import (
     EnergyKeyStaleResourceError,
     _parse_consumption,
@@ -22,6 +24,7 @@ from custom_components.energykey.const import (
     CONF_COOKIES,
     DATA_UPDATE_INTERVAL,
     DOMAIN,
+    STORAGE_KEY_PREFIX,
 )
 from custom_components.energykey.diagnostics import (
     async_get_config_entry_diagnostics,
@@ -182,6 +185,7 @@ async def _setup_entry(hass, load_fixture):
     fake_client = FakeEnergyKeyClient(load_fixture)
     with patch("custom_components.energykey.EnergyKeyClient", return_value=fake_client):
         assert await hass.config_entries.async_setup(entry.entry_id)
+    assert CONF_COOKIES not in entry.data
     assert entry.runtime_data.data_refresh_task is not None
     await entry.runtime_data.data_refresh_task
     await hass.async_block_till_done()
@@ -204,6 +208,43 @@ async def test_startup_heartbeat_precedes_discovery_and_data_fetch(
     client.async_heartbeat.assert_awaited_once()
     assert entry.runtime_data.last_successful_heartbeat is not None
     assert entry.runtime_data.coordinator.update_interval == DATA_UPDATE_INTERVAL
+
+
+async def test_existing_version_two_entry_preserves_private_state(
+    hass, load_fixture
+) -> None:
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        version=2,
+        minor_version=1,
+        unique_id=ACCOUNT_ID,
+        data={CONF_BASE_URL: BASE_URL, CONF_ACCOUNT_ID: ACCOUNT_ID},
+    )
+    entry.add_to_hass(hass)
+    store = EnergyKeyStore(hass, entry.entry_id)
+    await store.async_load()
+    await store.async_set_cookies(BOOTSTRAP_COOKIES)
+    await store.async_set_histories_and_offsets({"preserved": ()}, {"preserved": 42.0})
+
+    client = FakeEnergyKeyClient(load_fixture)
+    client.consumption_gate = asyncio.Event()
+    with patch(
+        "custom_components.energykey.EnergyKeyClient", return_value=client
+    ) as client_factory:
+        assert await hass.config_entries.async_setup(entry.entry_id)
+
+    assert client_factory.call_args.args[2] == BOOTSTRAP_COOKIES
+    assert entry.version == 2
+    assert entry.unique_id == ACCOUNT_ID
+    assert CONF_COOKIES not in entry.data
+    restored = EnergyKeyStore(hass, entry.entry_id)
+    await restored.async_load()
+    assert restored.history_keys == ("preserved",)
+    assert restored.statistics_offset("preserved") == 42.0
+    assert restored.cookies == client.cookie_state
+    client.consumption_gate.set()
+    assert entry.runtime_data.data_refresh_task is not None
+    await entry.runtime_data.data_refresh_task
 
 
 async def test_stale_item_is_rediscovered_and_retried(hass, load_fixture) -> None:
@@ -295,9 +336,7 @@ async def test_setup_returns_before_consumption_history_download(
     assert len(devices) == 2
     entries = er.async_entries_for_config_entry(er.async_get(hass), entry.entry_id)
     assert [item.translation_key for item in entries] == ["last_successful_heartbeat"]
-    assert entries[0].entity_id == (
-        "sensor.energykey_aaaaaaaaaaaa_last_successful_heartbeat"
-    )
+    assert entries[0].entity_id == "sensor.last_successful_heartbeat"
 
     client.consumption_gate.set()
     await entry.runtime_data.data_refresh_task
@@ -442,8 +481,19 @@ async def test_diagnostics_redacts_identifiers_and_values(hass, load_fixture) ->
     assert "raw-heat" not in serialized
     assert "100.59" not in serialized
     assert "2500.4" not in serialized
-    assert diagnostics["entry"][CONF_COOKIES] == "**REDACTED**"
+    assert CONF_COOKIES not in diagnostics["entry"]
     assert diagnostics["coordinator"]["unsupported_meter_count"] == 0
+    assert diagnostics["coordinator"]["supported_meter_count"] == 2
+    assert diagnostics["coordinator"]["refresh_attempts"] == 1
+    assert diagnostics["coordinator"]["consecutive_refresh_failures"] == 0
+    assert diagnostics["coordinator"]["last_refresh_error"] is None
+    assert diagnostics["coordinator"]["last_refresh_duration_seconds"] >= 0
+    assert diagnostics["session"]["heartbeat_attempts"] == 0
+    assert diagnostics["session"]["consecutive_heartbeat_failures"] == 0
+    assert diagnostics["integration"] == {
+        "config_entry_version": 2,
+        "config_entry_minor_version": 1,
+    }
     assert await hass.config_entries.async_unload(entry.entry_id)
 
 
@@ -479,3 +529,86 @@ async def test_store_mutators_round_trip_and_return_copies(hass) -> None:
     await restored.async_remove()
     assert restored.cookies == {}
     assert restored.history_keys == ()
+
+
+async def test_config_entry_migration_moves_cookies_to_private_storage(hass) -> None:
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        version=1,
+        minor_version=1,
+        unique_id=ACCOUNT_ID,
+        data={
+            CONF_BASE_URL: f"{BASE_URL}/",
+            CONF_COOKIES: BOOTSTRAP_COOKIES,
+            CONF_ACCOUNT_ID: ACCOUNT_ID,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    assert await async_migrate_entry(hass, entry)
+    assert entry.version == 2
+    assert entry.data[CONF_BASE_URL] == BASE_URL
+    assert CONF_COOKIES not in entry.data
+    restored = EnergyKeyStore(hass, entry.entry_id)
+    await restored.async_load()
+    assert restored.cookies == BOOTSTRAP_COOKIES
+
+
+async def test_config_entry_migration_rejects_incomplete_cookies(hass) -> None:
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        version=1,
+        minor_version=1,
+        data={
+            CONF_BASE_URL: BASE_URL,
+            CONF_COOKIES: {"wt3SessionId": "only-one-cookie"},
+        },
+    )
+    entry.add_to_hass(hass)
+
+    assert not await async_migrate_entry(hass, entry)
+    assert entry.version == 1
+    assert entry.data[CONF_COOKIES] == {"wt3SessionId": "only-one-cookie"}
+
+
+async def test_config_entry_migration_preserves_rotated_cookies_and_history(
+    hass,
+) -> None:
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        version=1,
+        minor_version=1,
+        unique_id=ACCOUNT_ID,
+        data={
+            CONF_BASE_URL: BASE_URL,
+            CONF_COOKIES: BOOTSTRAP_COOKIES,
+            CONF_ACCOUNT_ID: ACCOUNT_ID,
+        },
+    )
+    entry.add_to_hass(hass)
+    rotated = {"wt3SessionId": "new-session", "wt3login": "new-login"}
+    store = EnergyKeyStore(hass, entry.entry_id)
+    await store.async_load()
+    await store.async_set_cookies(rotated)
+    await store.async_set_histories_and_offsets({"preserved": ()}, {"preserved": 42.0})
+
+    assert await async_migrate_entry(hass, entry)
+    restored = EnergyKeyStore(hass, entry.entry_id)
+    await restored.async_load()
+    assert restored.cookies == rotated
+    assert restored.history_keys == ("preserved",)
+    assert restored.statistics_offset("preserved") == 42.0
+    assert entry.unique_id == ACCOUNT_ID
+    assert CONF_COOKIES not in entry.data
+
+
+async def test_version_one_storage_is_migrated(hass) -> None:
+    entry_id = "legacy-storage"
+    legacy = Store(hass, 1, f"{STORAGE_KEY_PREFIX}.{entry_id}", private=True)
+    await legacy.async_save({"cookies": BOOTSTRAP_COOKIES, "history": {"opaque": []}})
+
+    restored = EnergyKeyStore(hass, entry_id)
+    await restored.async_load()
+    assert restored.cookies == BOOTSTRAP_COOKIES
+    assert restored.history_keys == ("opaque",)
+    assert restored.statistics_offset("opaque") == 0

@@ -48,6 +48,8 @@ def _runtime(coordinator, *, initial_refresh=None) -> SimpleNamespace:
         reauth_started=False,
         last_heartbeat_error=None,
         last_successful_heartbeat=None,
+        heartbeat_attempts=0,
+        consecutive_heartbeat_failures=0,
     )
 
 
@@ -101,6 +103,7 @@ async def test_consumption_keepalive_success_updates_diagnostics() -> None:
     runtime.store.async_set_cookies.assert_not_awaited()
     assert runtime.last_successful_heartbeat is not None
     assert runtime.last_heartbeat_error is None
+    assert runtime.heartbeat_attempts == 1
     dispatcher_send.assert_called_once_with(
         hass, heartbeat_update_signal(entry.entry_id)
     )
@@ -125,6 +128,7 @@ async def test_full_refresh_during_delay_suppresses_due_keepalive() -> None:
     coordinator.async_run_consumption_keepalive.assert_not_awaited()
     runtime.store.async_set_cookies.assert_not_awaited()
     assert runtime.last_successful_heartbeat is None
+    assert runtime.heartbeat_attempts == 0
 
 
 async def test_atomic_due_recheck_does_not_report_a_probe() -> None:
@@ -239,6 +243,8 @@ async def test_auth_and_stale_resource_start_exactly_one_reauth(
 
     assert runtime.reauth_started is True
     assert runtime.last_heartbeat_error == diagnostic_error
+    assert runtime.heartbeat_attempts == 1
+    assert runtime.consecutive_heartbeat_failures == 1
     entry.async_start_reauth.assert_called_once_with(hass)
     coordinator.async_run_consumption_keepalive.assert_awaited_once_with()
 

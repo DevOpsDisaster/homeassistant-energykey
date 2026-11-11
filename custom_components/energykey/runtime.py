@@ -23,3 +23,5 @@ class EnergyKeyRuntimeData:
     reauth_started: bool = False
     last_successful_heartbeat: datetime | None = None
     last_heartbeat_error: str | None = None
+    heartbeat_attempts: int = 0
+    consecutive_heartbeat_failures: int = 0

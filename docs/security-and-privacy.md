@@ -24,10 +24,10 @@ requests with an unusable context.
 
 ## Locally stored data
 
-Home Assistant stores bootstrap cookies in config-entry data. Rotated session
-cookies, normalized history, and statistic offsets are stored in an
-entry-specific Home Assistant Store file. These files are inside `.storage`
-and are not encrypted by this integration.
+Session cookies, normalized history, and statistic offsets are stored in an
+entry-specific Home Assistant Store file inside `.storage`. The integration
+removes bootstrap cookies from config-entry data after setup. These files are
+not encrypted by this integration.
 
 The integration retains up to 13 calendar months of normalized history and
 re-fetches the latest 45 days. Home Assistant Recorder separately owns the
@@ -52,8 +52,8 @@ registry exports even though diagnostics omit them.
 ## Diagnostics and logs
 
 Diagnostics omit cookies, account IDs, meter IDs, raw payloads, consumption
-values, addresses, and meter numbers. Logs use generic protocol errors and
-must never include request headers, form bodies, or raw responses.
+values, addresses, and meter numbers. Logs do not include request headers,
+form bodies, cookies, or provider response bodies.
 
 Users must still inspect diagnostics, logs, and screenshots before sharing
 them. Report a suspected leak through the private process in
